@@ -35,14 +35,18 @@ export function applyConfidenceGate(
   if (analysis.rootCauseConfidence !== "high") blockers.push("root-cause confidence is not High");
   if (analysis.proposedFixConfidence !== "high")
     blockers.push("proposed-fix confidence is not High");
+
   if (analysis.expectedFiles.length === 0 || analysis.observableBehavior.length === 0)
     blockers.push("the proposed change is not focused and verifiable");
+
   if (analysis.missingInformation.length > 0)
     blockers.push(`missing information: ${analysis.missingInformation.join("; ")}`);
+
   if (repositoryId !== allowedRepositoryId)
     blockers.push(
       `repository ${repositoryId} is outside the allowed ${allowedRepositoryId} repository`,
     );
+
   return blockers.length === 0
     ? {
         actionable: true,
@@ -58,6 +62,7 @@ export function analysisMarkdown(
 ): string {
   const list = (values: string[]): string =>
     values.length ? values.map((value) => `- ${value}`).join("\n") : "- None";
+
   return `# ${ticket.key}: ${ticket.summary}
 
 ## Verdict

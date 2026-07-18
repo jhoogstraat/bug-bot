@@ -16,6 +16,7 @@ const config: RepositoryConfig = {
   harness: "codex",
   limits: { maxAgentTurns: 10, maxChangedFiles: 15, maxRepairAttempts: 3, maxExecutionMinutes: 45 },
 };
+
 const ticket = (component?: string): NormalizedBugTicket => ({
   key: "ABC-1",
   summary: "Bug",
@@ -33,6 +34,7 @@ const ticket = (component?: string): NormalizedBugTicket => ({
 describe("resolveRepository", () => {
   it("maps a Jira component", () =>
     expect(resolveRepository(ticket("Payments"), [config])).toBe(config));
+
   it("fails explicitly without a mapping", () =>
     expect(() => resolveRepository(ticket("Other"), [config])).toThrow(DomainError));
 });

@@ -10,6 +10,7 @@ const usage = z
     estimatedCost: z.number().nonnegative().optional(),
   })
   .optional();
+
 const runSchema = z.object({
   sessionId: z.string().default("unknown"),
   status: z.enum(["completed", "blocked", "failed", "human_input_required"]),
@@ -25,6 +26,7 @@ const runSchema = z.object({
   usage,
   humanInputRequest: z.string().max(4_000).optional(),
 });
+
 const reviewSchema = z.object({
   sessionId: z.string().default("unknown"),
   verdict: z.enum(["accept", "revise", "re-investigate"]),
@@ -41,6 +43,7 @@ const reviewSchema = z.object({
     .max(30),
   usage,
 });
+
 const analysisSchema = z.object({
   issueKey: z.string(),
   summary: z.string().max(8_000),
@@ -66,8 +69,10 @@ const analysisSchema = z.object({
 
 export const parseHarnessRunResult = (value: unknown): HarnessRunResult =>
   runSchema.parse(value) as HarnessRunResult;
+
 export const parseHarnessReviewResult = (value: unknown): HarnessReviewResult =>
   reviewSchema.parse(value) as HarnessReviewResult;
+
 export const parseTicketAnalysis = (value: unknown): TicketAnalysis =>
   analysisSchema.parse(value) as TicketAnalysis;
 

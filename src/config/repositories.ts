@@ -34,10 +34,12 @@ export function resolveRepository(
       config.cloneUrl.toLowerCase() === hint ||
       config.jiraComponents.some((value) => value.toLowerCase() === component),
   );
+
   if (!match)
     throw new DomainError(
       "MISSING_REPOSITORY_MAPPING",
       `No repository is configured for ${ticket.key}`,
     );
+
   return match;
 }

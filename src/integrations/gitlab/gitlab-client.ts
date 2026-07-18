@@ -32,6 +32,7 @@ export class HttpGitLabClient implements GitLabClient {
         signal: AbortSignal.timeout(20_000),
       },
     );
+
     if (!response.ok) throw new Error(`GitLab returned ${response.status}`);
     const body = (await response.json()) as { iid: number; web_url: string };
     return { projectId: input.projectId, iid: body.iid, url: body.web_url };
@@ -41,6 +42,7 @@ export class HttpGitLabClient implements GitLabClient {
       headers: { "private-token": this.token },
       signal: AbortSignal.timeout(20_000),
     });
+
     if (!response.ok) throw new Error(`GitLab returned ${response.status}`);
     return ((await response.json()) as { id: number }).id;
   }
@@ -56,6 +58,7 @@ export class FakeGitLabClient implements GitLabClient {
         iid: existing + 1,
         url: `https://gitlab.example/${input.projectId}/-/merge_requests/${existing + 1}`,
       };
+
     this.created.push(structuredClone(input));
     const iid = this.created.length;
     return {

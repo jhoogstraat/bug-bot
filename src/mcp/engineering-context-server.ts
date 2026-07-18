@@ -24,11 +24,13 @@ export function createEngineeringContextServer(provider: EngineeringContextProvi
     },
     async ({ issueKey, limit }) => result(await provider.getRelatedTickets(issueKey, limit)),
   );
+
   server.registerTool(
     "ci.get_failure_details",
     { description: "Get one compact parsed CI failure", inputSchema: { buildId: z.string() } },
     async ({ buildId }) => result(await provider.getCiFailure(buildId)),
   );
+
   server.registerTool(
     "quality.get_changed_file_findings",
     {
@@ -43,6 +45,7 @@ export function createEngineeringContextServer(provider: EngineeringContextProvi
     async ({ projectId, commitSha, files, limit }) =>
       result(await provider.getQualityFindings(projectId, commitSha, files, limit)),
   );
+
   server.registerTool(
     "gitlab.get_merge_request_context",
     {
@@ -51,6 +54,7 @@ export function createEngineeringContextServer(provider: EngineeringContextProvi
     },
     async ({ projectId, iid }) => result(await provider.getMergeRequest(projectId, iid)),
   );
+
   return server;
 }
 
@@ -68,5 +72,6 @@ if (
     getQualityFindings: async () => [],
     getMergeRequest: async () => ({ available: false }),
   };
+
   await createEngineeringContextServer(emptyProvider).connect(new StdioServerTransport());
 }

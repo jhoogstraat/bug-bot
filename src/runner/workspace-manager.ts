@@ -34,6 +34,7 @@ export class WorkspaceManager {
     const path = resolve(root, `${sanitize(issueKey)}-${suffix}`);
     if (!path.startsWith(`${root}/`))
       throw new DomainError("WORKSPACE_FAILURE", "Resolved workspace escaped its root");
+
     const branchName = `agent/${issueKey.toLowerCase()}/${slug(shortSlug)}`;
     try {
       if (await pathExists(path)) {
@@ -42,11 +43,13 @@ export class WorkspaceManager {
           ["branch", "--show-current"],
           { cwd: path },
         );
+
         const { stdout: existingBase } = await execFileAsync(
           "git",
           ["merge-base", "HEAD", repository.defaultBranch],
           { cwd: path },
         );
+
         const resolvedPath = await realpath(path);
         const workspace = {
           id: resolvedPath,
@@ -55,20 +58,25 @@ export class WorkspaceManager {
             existingBranch.trim() === repository.defaultBranch ? branchName : existingBranch.trim(),
           baseCommitSha: existingBase.trim(),
         };
+
         this.workspaces.set(resolvedPath, workspace);
         return workspace;
       }
+
       await execFileAsync("git", ["clone", "--no-hardlinks", repository.cloneUrl, path], {
         timeout: 120_000,
       });
+
       await execFileAsync("git", ["checkout", repository.defaultBranch], {
         cwd: path,
         timeout: 30_000,
       });
+
       const { stdout: base } = await execFileAsync("git", ["rev-parse", "HEAD"], {
         cwd: path,
         timeout: 10_000,
       });
+
       const resolvedPath = await realpath(path);
       const workspace = {
         id: resolvedPath,
@@ -76,6 +84,7 @@ export class WorkspaceManager {
         branchName,
         baseCommitSha: base.trim(),
       };
+
       this.workspaces.set(resolvedPath, workspace);
       return workspace;
     } catch (error) {
@@ -92,6 +101,7 @@ export class WorkspaceManager {
     const { stdout: current } = await execFileAsync("git", ["branch", "--show-current"], {
       cwd: workspace.path,
     });
+
     if (current.trim() !== workspace.branchName) {
       try {
         await execFileAsync("git", ["checkout", "-b", workspace.branchName], {
@@ -105,6 +115,7 @@ export class WorkspaceManager {
         });
       }
     }
+
     this.workspaces.set(workspace.id, workspace);
     return workspace;
   }
@@ -115,19 +126,23 @@ export class WorkspaceManager {
       cwd: workspace.path,
       maxBuffer: 2_000_000,
     });
+
     const changedFiles = status
       .split(/\r?\n/)
       .filter(Boolean)
       .map((line) => line.slice(3).split(" -> ").at(-1) ?? "");
+
     const { stdout: diff } = await execFileAsync(
       "git",
       ["diff", "--no-ext-diff", "--binary", "HEAD"],
       { cwd: workspace.path, maxBuffer: 10_000_000 },
     );
+
     const { stdout: summary } = await execFileAsync("git", ["diff", "--stat", "HEAD"], {
       cwd: workspace.path,
       maxBuffer: 1_000_000,
     });
+
     return { changedFiles, diff, diffSummary: summary };
   }
 
@@ -136,6 +151,7 @@ export class WorkspaceManager {
     const target = resolve(workspace.path, relativePath);
     if (!target.startsWith(`${resolve(workspace.path)}/`))
       throw new DomainError("WORKSPACE_FAILURE", "Artifact path escaped its workspace");
+
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, content, "utf8");
   }
@@ -147,16 +163,19 @@ export class WorkspaceManager {
       ["diff", "--name-only", `${workspace.baseCommitSha}..HEAD`],
       { cwd: workspace.path, maxBuffer: 2_000_000 },
     );
+
     const { stdout: diff } = await execFileAsync(
       "git",
       ["diff", "--no-ext-diff", "--binary", `${workspace.baseCommitSha}..HEAD`],
       { cwd: workspace.path, maxBuffer: 10_000_000 },
     );
+
     const { stdout: summary } = await execFileAsync(
       "git",
       ["diff", "--stat", `${workspace.baseCommitSha}..HEAD`],
       { cwd: workspace.path, maxBuffer: 1_000_000 },
     );
+
     return { changedFiles: names.split(/\r?\n/).filter(Boolean), diff, diffSummary: summary };
   }
 
@@ -178,6 +197,7 @@ export class WorkspaceManager {
       ],
       { cwd: workspace.path, timeout: 60_000 },
     );
+
     const { stdout } = await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: workspace.path });
     return stdout.trim();
   }
@@ -217,6 +237,7 @@ export class WorkspaceManager {
 function sanitize(value: string): string {
   return basename(value).replace(/[^a-zA-Z0-9._-]/g, "-");
 }
+
 function slug(value: string): string {
   return (
     value
@@ -226,6 +247,7 @@ function slug(value: string): string {
       .slice(0, 48) || "bugfix"
   );
 }
+
 async function pathExists(path: string): Promise<boolean> {
   try {
     await stat(path);

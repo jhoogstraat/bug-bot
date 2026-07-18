@@ -49,6 +49,7 @@ export class FakeCodingHarness implements CodingHarness {
       `Simulated focused fix for ${input.ticket.key}\n`,
       "utf8",
     );
+
     return {
       sessionId: randomUUID(),
       status: "completed",
@@ -71,6 +72,7 @@ export class FakeCodingHarness implements CodingHarness {
       `Simulated repair for ${input.failure.fingerprint}\n`,
       "utf8",
     );
+
     return {
       sessionId,
       status: "completed",

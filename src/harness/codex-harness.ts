@@ -66,6 +66,7 @@ export class CodexHarness implements CodingHarness {
       undefined,
       true,
     );
+
     return parseTicketAnalysis(invocation.output);
   }
 
@@ -75,6 +76,7 @@ export class CodexHarness implements CodingHarness {
       initialTaskPrompt(input),
       runResultJsonSchema,
     );
+
     return {
       ...parseHarnessRunResult(invocation.output),
       sessionId: invocation.sessionId,
@@ -92,6 +94,7 @@ export class CodexHarness implements CodingHarness {
       runResultJsonSchema,
       sessionId,
     );
+
     return {
       ...parseHarnessRunResult(invocation.output),
       sessionId: invocation.sessionId,
@@ -106,6 +109,7 @@ export class CodexHarness implements CodingHarness {
       runResultJsonSchema,
       sessionId,
     );
+
     return {
       ...parseHarnessRunResult(invocation.output),
       sessionId: invocation.sessionId,
@@ -121,6 +125,7 @@ export class CodexHarness implements CodingHarness {
       undefined,
       true,
     );
+
     return {
       ...parseHarnessReviewResult(invocation.output),
       sessionId: invocation.sessionId,
@@ -141,9 +146,11 @@ export class CodexHarness implements CodingHarness {
       approvalPolicy: "never",
       webSearchMode: "disabled",
     };
+
     const thread = resumeSessionId
       ? this.codex.resumeThread(resumeSessionId, options)
       : this.codex.startThread(options);
+
     const controller = new AbortController();
     const timeoutState = { elapsed: false };
     const timer = setTimeout(() => {
@@ -163,6 +170,7 @@ export class CodexHarness implements CodingHarness {
     } catch (error) {
       if (timeoutState.elapsed)
         throw new DomainError("HARNESS_TIMEOUT", `Codex exceeded ${this.timeoutMinutes} minutes`);
+
       throw error;
     } finally {
       clearTimeout(timer);
@@ -176,6 +184,7 @@ function codexEnvironment(): Record<string, string> {
     if (value !== undefined && name !== "JIRA_TOKEN" && name !== "GITLAB_TOKEN")
       environment[name] = value;
   }
+
   return environment;
 }
 

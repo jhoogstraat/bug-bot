@@ -1,5 +1,6 @@
 export type CiFailureCategory =
   "compilation" | "test" | "lint" | "quality_gate" | "infrastructure" | "timeout" | "unknown";
+
 export type CiResult = {
   provider: "jenkins";
   buildId: string;

@@ -26,6 +26,7 @@ function plainText(value: unknown, maxCharacters: number): string | undefined {
       else if (record.content) walk(record.content);
     }
   };
+
   walk(value);
   const result = fragments.join(" ").replace(/\s+/g, " ").trim();
   return result ? truncate(result, maxCharacters) : undefined;
@@ -53,6 +54,7 @@ function classifyAttachment(attachment: JiraAttachmentDto): AttachmentClassifica
   if (mime.includes("text") || /\.(log|txt|out)$/.test(name)) return "log";
   if (mime.includes("pdf") || mime.includes("document") || /\.(pdf|docx?)$/.test(name))
     return "document";
+
   return "unknown";
 }
 

@@ -41,6 +41,7 @@ const issue: JiraIssueDto = {
     attachment: [],
   },
 };
+
 const queueTarget = restate.workflow({
   name: "QueueReplayTarget",
   handlers: {
@@ -52,10 +53,12 @@ const queueTarget = restate.workflow({
     ),
   },
 });
+
 const queue = createBugFixQueueRestateService(
   new FakeJiraClient(new Map([[issue.key, issue]])),
   queueTarget as unknown as BugFixRestateWorkflow,
 );
+
 const queueInvoker = restate.service({
   name: "QueueReplayInvoker",
   handlers: {
@@ -77,6 +80,7 @@ describeWithRestate("Restate always-replay integration", () => {
       disableRetries: true,
       storage: "memory",
     });
+
     ingress = clients.connect({ url: environment.baseUrl() });
   }, 30_000);
 
@@ -95,6 +99,7 @@ describeWithRestate("Restate always-replay integration", () => {
     const workflowResult = await ingress
       .workflowClient(queueTarget, "bugfix/ABC-1/3")
       .workflowAttach();
+
     expect(workflowResult).toEqual({ issueKey: "ABC-1", generation: 3 });
   });
 });
@@ -142,6 +147,7 @@ describeWithRestate("Restate workflow state recovery", () => {
         maxExecutionMinutes: 5,
       },
     };
+
     const jira = new FakeJiraClient(new Map([[issue.key, issue]]));
     const workspaces = new WorkspaceManager(join(root, "workspaces"), true);
     const gitlab: GitLabClient = {
@@ -149,6 +155,7 @@ describeWithRestate("Restate workflow state recovery", () => {
         throw new DomainError("MR_CREATION_FAILURE", "Merge request creation was rejected");
       },
     };
+
     const workflow = createBugFixRestateWorkflow({
       jira,
       gitlab,
@@ -158,6 +165,7 @@ describeWithRestate("Restate workflow state recovery", () => {
       resolveRepository: () => repository,
       actionableRepositoryId: repository.id,
     });
+
     invoker = createWorkflowReplayInvoker(workflow);
     environment = await startRestateIntegrationEnvironment({
       services: [workflow, invoker],
@@ -165,6 +173,7 @@ describeWithRestate("Restate workflow state recovery", () => {
       disableRetries: true,
       storage: "memory",
     });
+
     ingress = clients.connect({ url: environment.baseUrl() });
   }, 30_000);
 
@@ -183,6 +192,7 @@ describeWithRestate("Restate workflow state recovery", () => {
       state: "FAILED",
       detail: "Merge request creation was rejected",
     });
+
     expect(state).toMatchObject({ repository: { id: "fixture" }, state: "FAILED" });
   });
 });
@@ -213,6 +223,7 @@ async function startRestateIntegrationEnvironment(
 ): Promise<RestateIntegrationEnvironment> {
   if (process.env.RESTATE_CONTAINER_RUNTIME === "apple")
     return await AppleContainerRestateEnvironment.start(options);
+
   return await RestateTestEnvironment.start(options);
 }
 
@@ -254,6 +265,7 @@ class AppleContainerRestateEnvironment implements RestateIntegrationEnvironment 
         "RESTATE_DEFAULT_RETRY_POLICY__ON_MAX_ATTEMPTS=kill",
         "docker.io/restatedev/restate:latest",
       ]);
+
       await waitForHealthy(`http://127.0.0.1:${adminPort}/health`);
       const registration = await fetch(`http://127.0.0.1:${adminPort}/deployments`, {
         method: "POST",
@@ -262,10 +274,12 @@ class AppleContainerRestateEnvironment implements RestateIntegrationEnvironment 
           uri: `http://host.container.internal:${endpointAddress.port}`,
         }),
       });
+
       if (!registration.ok)
         throw new Error(
           `Restate service registration failed: ${registration.status} ${await registration.text()}`,
         );
+
       return new AppleContainerRestateEnvironment(endpoint, name, ingressPort);
     } catch (error) {
       endpoint.close();
@@ -290,6 +304,7 @@ async function availablePort(): Promise<number> {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", resolve);
   });
+
   const address = server.address();
   await new Promise<void>((resolve) => server.close(() => resolve()));
   if (!address || typeof address === "string") throw new Error("Could not reserve a TCP port");
@@ -311,8 +326,10 @@ async function waitForHealthy(url: string): Promise<void> {
     } catch {
       // Restate has not finished starting yet.
     }
+
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
+
   throw new Error(`Restate did not become healthy at ${url}`);
 }
 

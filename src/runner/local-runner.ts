@@ -32,6 +32,7 @@ export class LocalRunner implements ExecutionRunner {
         : input.kind === "continue"
           ? await input.harness.continueTask(input.sessionId, input.task)
           : await input.harness.reviseTask(input.sessionId, input.task);
+
     return { result };
   }
 }

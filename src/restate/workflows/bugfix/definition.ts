@@ -88,6 +88,7 @@ export function createBugFixRestateWorkflow(
             const ticket = await ctx.run("load-normalized-ticket", async () =>
               normalizeJiraIssue(await dependencies.jira.getIssue(input.issueKey)),
             );
+
             const repository = dependencies.resolveRepository(ticket);
 
             if (!state) {
@@ -102,6 +103,7 @@ export function createBugFixRestateWorkflow(
                   }),
                 { maxRetryAttempts: 3 },
               );
+
               const investigation = await ctx.run(
                 "investigate-ticket",
                 () => investigateTicket(dependencies, ticket, repository, investigationWorkspace),
@@ -120,6 +122,7 @@ export function createBugFixRestateWorkflow(
                   ),
                   investigation.gate.reason,
                 );
+
                 ctx.set("workflowState", state);
                 return workflowResult(runId, state);
               }
@@ -127,22 +130,26 @@ export function createBugFixRestateWorkflow(
               await ctx.run("claim-jira-ticket", () => dependencies.jira.claimIssue(ticket.key), {
                 maxRetryAttempts: 3,
               });
+
               const workspace = await ctx.run(
                 "activate-focused-branch",
                 () => dependencies.runner.activateWorkspace(investigationWorkspace),
                 { maxRetryAttempts: 2 },
               );
+
               const harnessResult = await ctx.run(
                 "start-codex",
                 () =>
                   startHarness(dependencies, ticket, repository, workspace, investigation.analysis),
                 { maxRetryAttempts: 2 },
               );
+
               const commitSha = await ctx.run(
                 "validate-and-commit",
                 () => validateAndCommit(dependencies, workspace, ticket, repository, harnessResult),
                 { maxRetryAttempts: 1 },
               );
+
               let reviewState = implementationState(
                 runId,
                 input.generation,
@@ -153,6 +160,7 @@ export function createBugFixRestateWorkflow(
                 harnessResult,
                 commitSha,
               );
+
               state = reviewState;
               ctx.set("workflowState", reviewState);
 
@@ -162,15 +170,18 @@ export function createBugFixRestateWorkflow(
                   () => reviewPatch(dependencies, reviewState, ticket, []),
                   { maxRetryAttempts: 2 },
                 );
+
                 if (review.verdict === "accept") {
                   reviewState = reviewReady(review.state, review.summary);
                   break;
                 }
+
                 if (review.verdict === "re-investigate") {
                   reviewState = humanRequired(
                     review.state,
                     `Review invalidated the analysis: ${review.summary}`,
                   );
+
                   state = reviewState;
                   ctx.set("workflowState", reviewState);
                   return workflowResult(runId, reviewState);
@@ -181,6 +192,7 @@ export function createBugFixRestateWorkflow(
                   () => revisePatch(dependencies, review.state, ticket, repository, review),
                   { maxRetryAttempts: 1 },
                 );
+
                 state = reviewState;
                 ctx.set("workflowState", reviewState);
               }
@@ -190,6 +202,7 @@ export function createBugFixRestateWorkflow(
                 () => dependencies.workspaces.push(workspaceFromState(reviewState)),
                 { maxRetryAttempts: 3 },
               );
+
               const mergeRequest = await ctx.run(
                 "create-draft-merge-request",
                 () =>
@@ -203,6 +216,7 @@ export function createBugFixRestateWorkflow(
                   ),
                 { maxRetryAttempts: 3 },
               );
+
               state = published(reviewState, mergeRequest);
               ctx.set("workflowState", state);
             }
@@ -215,14 +229,17 @@ export function createBugFixRestateWorkflow(
                 callbackTimeoutMinutes,
                 ctx.promise<CiCallback>(callbackPromiseName("jenkins", state.repairAttempt)).get(),
               );
+
               if (jenkins.status === "timed_out") {
                 state = stopForHuman(
                   state,
                   `Jenkins did not report for repair attempt ${state.repairAttempt} within ${callbackTimeoutMinutes} minutes`,
                 );
+
                 ctx.set("workflowState", state);
                 return workflowResult(runId, state);
               }
+
               if (jenkins.callback.result.status === "success") break;
               if (!jenkins.callback.failure) {
                 state = stopForHuman(state, "Jenkins failed without compact failure details");
@@ -237,6 +254,7 @@ export function createBugFixRestateWorkflow(
                   { ...state, lastFailureFingerprint: failure.fingerprint },
                   decision.reason,
                 );
+
                 ctx.set("workflowState", state);
                 return workflowResult(runId, state);
               }
@@ -250,12 +268,14 @@ export function createBugFixRestateWorkflow(
                 () => continueHarness(dependencies, stateToRepair, ticket, failure),
                 { maxRetryAttempts: 2 },
               );
+
               const repairCommitSha = await ctx.run(
                 `validate-and-commit-repair-${attempt}`,
                 () =>
                   validateAndCommitRepair(dependencies, stateToRepair, ticket, repository, repair),
                 { maxRetryAttempts: 1 },
               );
+
               state = repairState(stateToRepair, repair, repairCommitSha, failure);
               ctx.set("workflowState", state);
               const stateToPush = state;
@@ -275,14 +295,17 @@ export function createBugFixRestateWorkflow(
                 .promise<SonarCallback>(callbackPromiseName("sonarqube", state.repairAttempt))
                 .get(),
             );
+
             if (sonar.status === "timed_out") {
               state = stopForHuman(
                 state,
                 `SonarQube did not report for repair attempt ${state.repairAttempt} within ${callbackTimeoutMinutes} minutes`,
               );
+
               ctx.set("workflowState", state);
               return workflowResult(runId, state);
             }
+
             if (
               sonar.callback.qualityGate === "failed" ||
               sonar.callback.findings.some((finding) => finding.qualityGateFailure)
@@ -291,6 +314,7 @@ export function createBugFixRestateWorkflow(
                 state,
                 "SonarQube has unresolved latest-commit findings; product code was not changed without a focused diagnosis",
               );
+
               ctx.set("workflowState", state);
               return workflowResult(runId, state);
             }
@@ -306,20 +330,24 @@ export function createBugFixRestateWorkflow(
                 )
                 .get(),
             );
+
             if (mergeRequestReview.status === "timed_out") {
               state = stopForHuman(
                 state,
                 `GitLab did not report for repair attempt ${state.repairAttempt} within ${callbackTimeoutMinutes} minutes`,
               );
+
               ctx.set("workflowState", state);
               return workflowResult(runId, state);
             }
+
             if (!mergeRequestReview.callback.requiredFeedbackResolved) {
               state = stopForHuman(
                 state,
                 mergeRequestReview.callback.detail ??
                   "Required merge-request feedback remains unresolved",
               );
+
               ctx.set("workflowState", state);
               return workflowResult(runId, state);
             }
@@ -328,6 +356,7 @@ export function createBugFixRestateWorkflow(
               state,
               "Latest pipeline succeeded with no unresolved required feedback",
             );
+
             ctx.set("workflowState", state);
             const readyState = state;
             await ctx.run(
@@ -335,11 +364,13 @@ export function createBugFixRestateWorkflow(
               () => linkMergeRequestInJira(dependencies, readyState),
               { maxRetryAttempts: 3 },
             );
+
             await ctx.run(
               "jira-ready-to-merge",
               () => markJiraReadyToMerge(dependencies, readyState),
               { maxRetryAttempts: 3 },
             );
+
             state = done(readyState, "Ready to merge; merge remains a human action");
             ctx.set("workflowState", state);
             return workflowResult(runId, state);
@@ -353,11 +384,13 @@ export function createBugFixRestateWorkflow(
               state ??
               (await ctx.get("workflowState")) ??
               createFailureState(runId, input, error, detail);
+
             const nextState: BugFixWorkflowState = {
               ...failed,
               state: failed.state === "HUMAN_REQUIRED" ? "HUMAN_REQUIRED" : "FAILED",
               statusDetail: detail,
             };
+
             ctx.set("workflowState", nextState);
             return workflowResult(runId, nextState);
           }
@@ -419,17 +452,20 @@ async function investigateTicket(
       maxExecutionMinutes: repository.limits.maxExecutionMinutes,
     },
   });
+
   if (analysis.issueKey !== ticket.key)
     throw new DomainError(
       "HARNESS_BLOCKED",
       `Analysis returned ${analysis.issueKey} for ${ticket.key}`,
     );
+
   const gate = applyConfidenceGate(analysis, repository.id, dependencies.actionableRepositoryId);
   await dependencies.workspaces.writeArtifact(
     workspace,
     `ticket-analysis/${ticket.key}/ANALYSIS.md`,
     analysisMarkdown(ticket, analysis, gate),
   );
+
   return { analysis, gate };
 }
 
@@ -459,6 +495,7 @@ async function startHarness(
       },
     },
   });
+
   validateHarnessResult(execution.result);
   return execution.result;
 }
@@ -506,6 +543,7 @@ async function reviewPatch(
   const inspection = await dependencies.workspaces.inspectFromBase(workspace);
   if (!state.analysis)
     throw new DomainError("HARNESS_BLOCKED", "Independent review requires the approved analysis");
+
   const review = await dependencies.harness.review({
     ticket,
     analysis: state.analysis,
@@ -515,6 +553,7 @@ async function reviewPatch(
     ciStatus: "not started; review is required before publication",
     sonarFindings,
   });
+
   return {
     ...review,
     state: {
@@ -539,8 +578,10 @@ async function revisePatch(
       "HARNESS_BLOCKED",
       "Review feedback cannot be addressed without the implementer session",
     );
+
   if (state.reviewAttempt >= state.maxRepairAttempts)
     throw new DomainError("REPAIR_LIMIT_REACHED", "Review revision limit reached");
+
   const before = await dependencies.workspaces.inspectFromBase(workspace);
   const execution = await dependencies.runner.executeHarness({
     kind: "revise",
@@ -553,6 +594,7 @@ async function revisePatch(
       review,
     },
   });
+
   const commitSha = await validateAndCommitRepair(
     dependencies,
     state,
@@ -560,6 +602,7 @@ async function revisePatch(
     repository,
     execution.result,
   );
+
   return {
     ...state,
     state: "REVIEWING",
@@ -580,6 +623,7 @@ async function continueHarness(
   const sessionId = state.harness?.sessionId;
   if (!sessionId || !state.currentCommitSha)
     throw new DomainError("HARNESS_BLOCKED", "Cannot resume without a session and commit");
+
   const before = await dependencies.workspaces.inspectFromBase(workspace);
   const execution = await dependencies.runner.executeHarness({
     kind: "continue",
@@ -593,6 +637,7 @@ async function continueHarness(
       failure,
     },
   });
+
   validateHarnessResult(execution.result);
   return execution.result;
 }
@@ -616,6 +661,7 @@ async function linkMergeRequestInJira(
 ): Promise<void> {
   if (!state.mergeRequest)
     throw new DomainError("VALIDATION_FAILURE", "Only an accepted review can be handed off");
+
   await dependencies.jira.ensureMergeRequestLink(state.issueKey, state.mergeRequest.url);
 }
 
@@ -625,6 +671,7 @@ async function markJiraReadyToMerge(
 ): Promise<void> {
   if (!state.mergeRequest)
     throw new DomainError("VALIDATION_FAILURE", "Only an accepted review can be handed off");
+
   await dependencies.jira.ensureReadyToMerge(state.issueKey);
 }
 
@@ -695,6 +742,7 @@ function repairState(
 function validateHarnessResult(result: HarnessRunResult): void {
   if (result.status === "human_input_required")
     throw new DomainError("HUMAN_INPUT_REQUIRED", result.humanInputRequest ?? result.summary);
+
   if (result.status !== "completed") throw new DomainError("HARNESS_BLOCKED", result.summary);
   if (!result.validation.succeeded)
     throw new DomainError("VALIDATION_FAILURE", result.validation.failures.join("; "));
@@ -703,6 +751,7 @@ function validateHarnessResult(result: HarnessRunResult): void {
 function validatePatch(inspection: WorkspaceInspection, repository: RepositoryConfig): void {
   if (inspection.changedFiles.length === 0)
     throw new DomainError("NO_CODE_CHANGES", "Harness completed without changing files");
+
   if (inspection.changedFiles.length > repository.limits.maxChangedFiles)
     throw new DomainError(
       "VALIDATION_FAILURE",
@@ -723,6 +772,7 @@ function workspaceFromState(state: BugFixWorkflowState): Workspace {
   const path = state.harness?.workspaceId;
   if (!path || !state.branchName || !state.baseCommitSha)
     throw new DomainError("WORKSPACE_FAILURE", "Workflow does not contain a recoverable workspace");
+
   return { id: path, path, branchName: state.branchName, baseCommitSha: state.baseCommitSha };
 }
 
@@ -747,8 +797,10 @@ export function decideRepair(
       reason: `CI failure is ${failure.category}; product code will not be changed`,
     };
   }
+
   if (state.repairAttempt >= state.maxRepairAttempts)
     return { action: "human_required", reason: "Maximum repair attempts reached" };
+
   if (
     state.lastFailureFingerprint === failure.fingerprint &&
     state.lastCommitAtFailure === currentCommitSha
@@ -758,6 +810,7 @@ export function decideRepair(
       reason: "The same failure repeated without a meaningful code change",
     };
   }
+
   return { action: "repair" };
 }
 
@@ -786,12 +839,14 @@ function createFailureState(
     "REPEATED_FAILURE",
     "CI_INFRASTRUCTURE_FAILURE",
   ];
+
   const code =
     error instanceof DomainError
       ? error.code
       : error instanceof restate.TerminalError
         ? (error.metadata?.[domainCodeMetadataKey] as DomainErrorCode | undefined)
         : undefined;
+
   return {
     runId,
     issueKey: input.issueKey,
@@ -833,6 +888,7 @@ async function waitForCallback<T extends object>(
         throw new Error(
           `Callback promise ${callbackPromiseName(kind, attempt)} resolved without a value`,
         );
+
       return { status: "received" as const, callback: value };
     }),
     ctx

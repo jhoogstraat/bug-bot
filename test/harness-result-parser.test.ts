@@ -10,6 +10,7 @@ describe("harness result validation", () => {
         validation: { commandsRun: ["bun run test"], succeeded: true, failures: [] },
       }).status,
     ).toBe("completed"));
+
   it("rejects invalid statuses", () =>
     expect(() =>
       parseHarnessRunResult({

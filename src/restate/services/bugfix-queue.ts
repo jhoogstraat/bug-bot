@@ -27,9 +27,11 @@ export function createBugFixQueueRestateService(jira: JiraClient, workflow: BugF
         const queue = await ctx.run("capture-fixed-jira-queue", () =>
           captureBugFixQueue(jira, input.filterUrl, input.generation),
         );
+
         for (const entry of queue.entries) {
           ctx.workflowSendClient(workflow, workflowId(entry.issueKey, entry.generation)).run(entry);
         }
+
         return queue;
       },
     },
@@ -54,6 +56,7 @@ export async function captureBugFixQueue(
         issueKeys.push(issue.key);
       }
     }
+
     nextPageToken = page.isLast ? undefined : page.nextPageToken;
     if (!page.isLast && !nextPageToken)
       throw new DomainError(

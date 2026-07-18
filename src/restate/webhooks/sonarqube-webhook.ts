@@ -12,6 +12,7 @@ const finding = z.object({
   isNewCode: z.boolean(),
   qualityGateFailure: z.boolean().optional(),
 });
+
 const schema = z.object({
   workflowId: z.string(),
   providerEventId: z.string().min(1),
@@ -45,6 +46,7 @@ export function createSonarQubeWebhookIngressService(workflow: BugFixRestateWork
             ? { qualityGateFailure: item.qualityGateFailure }
             : {}),
         }));
+
         await ctx.workflowClient(workflow, event.workflowId).onSonarQube({
           correlation: {
             attempt: event.attempt,
@@ -54,6 +56,7 @@ export function createSonarQubeWebhookIngressService(workflow: BugFixRestateWork
           qualityGate: event.qualityGate,
           findings,
         });
+
         return { accepted: true };
       },
     },

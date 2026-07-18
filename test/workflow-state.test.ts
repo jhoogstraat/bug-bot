@@ -35,21 +35,25 @@ describe("workflow state transitions", () => {
       statusDetail: "input needed",
       currentCommitSha: "abc123",
     });
+
     expect(failed(current, "unexpected failure")).toMatchObject({
       state: "FAILED",
       statusDetail: "unexpected failure",
       currentCommitSha: "abc123",
     });
+
     expect(reviewReady(current, "checks passed")).toMatchObject({
       state: "REVIEW_READY",
       statusDetail: "checks passed",
       currentCommitSha: "abc123",
     });
+
     expect(done(current, "ready to merge")).toMatchObject({
       state: "DONE",
       statusDetail: "ready to merge",
       currentCommitSha: "abc123",
     });
+
     expect(current).toEqual(state("previous detail"));
   });
 

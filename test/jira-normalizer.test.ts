@@ -25,6 +25,7 @@ describe("normalizeJiraIssue", () => {
         attachment: [{ id: "1", filename: "error.log", mimeType: "text/plain" }],
       },
     };
+
     const result = normalizeJiraIssue(issue);
     expect(result.description).toBe("Fails & retries");
     expect(result.relevantComments).toHaveLength(10);

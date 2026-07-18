@@ -7,10 +7,12 @@ export interface JenkinsParseInput {
   log: string;
   repositoryPathPrefixes?: string[];
 }
+
 export interface JenkinsParserLimits {
   maxExcerptBytes: number;
   contextLines: number;
 }
+
 const defaults: JenkinsParserLimits = { maxExcerptBytes: 8 * 1024, contextLines: 20 };
 
 const timestamp = /^\s*(?:\[?\d{4}-\d{2}-\d{2}[T ][^\] ]+\]?|\[?\d{2}:\d{2}:\d{2}(?:\.\d+)?\]?)\s*/;
@@ -32,11 +34,13 @@ function classify(log: string): CiFailureCategory {
     )
   )
     return "infrastructure";
+
   if (/timed? out|timeout exceeded/.test(lower)) return "timeout";
   if (/quality gate.*fail|sonarqube.*fail/.test(lower)) return "quality_gate";
   if (/eslint|lint (?:error|failed)|checkstyle/.test(lower)) return "lint";
   if (/compilation failed|compiler error|error ts\d+|cannot find symbol/.test(lower))
     return "compilation";
+
   if (/tests? failed|assertionerror|\bfail(?:ed|ure)\b/.test(lower)) return "test";
   return "unknown";
 }
@@ -51,6 +55,7 @@ export function failureFingerprint(failure: Omit<CompactCiFailure, "fingerprint"
       .sort(),
     excerpt: normalizeMessage(failure.logExcerpt).slice(0, 1_000),
   });
+
   return createHash("sha256").update(stable).digest("hex").slice(0, 20);
 }
 
@@ -70,9 +75,11 @@ export function parseJenkinsFailure(
   const lines = rawLines
     .map(sanitize)
     .filter((line, index, all) => line.trim() && line !== all[index - 1]);
+
   const meaningful = lines.findIndex((line) =>
     /error|fail|exception|timeout|offline|unauthorized|cannot find/i.test(line),
   );
+
   const start = Math.max(0, (meaningful < 0 ? 0 : meaningful) - limits.contextLines);
   const selected = lines.slice(start, start + limits.contextLines * 2 + 1);
   let excerpt = selected.join("\n");
@@ -84,6 +91,7 @@ export function parseJenkinsFailure(
       const match = line.match(
         /(?<file>[\w./\\-]+\.(?:ts|tsx|js|jsx|java|kt|py|go|cs|cpp|c|h))(?::|\()(?<line>\d+)(?::\d+|,\d+\))?\s*(?:-|:)?\s*(?:error(?:\s+TS\d+)?:?\s*)?(?<message>.+)/i,
       );
+
       if (!match?.groups || !/error|cannot|expected|undefined|failed/i.test(line)) return [];
       return [
         {
@@ -115,6 +123,7 @@ export function parseJenkinsFailure(
     logExcerpt: excerpt,
     removedLineCount: Math.max(0, rawLines.length - selected.length),
   };
+
   return { ...base, fingerprint: failureFingerprint(base) };
 }
 

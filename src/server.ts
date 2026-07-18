@@ -44,6 +44,7 @@ const jira =
         required(env.JIRA_TOKEN, "JIRA_TOKEN"),
       )
     : new FakeJiraClient(new Map([[fakeIssue.key, fakeIssue]]));
+
 const gitlab =
   env.ADAPTER_MODE === "real"
     ? new HttpGitLabClient(
@@ -56,6 +57,7 @@ const harness =
   env.HARNESS_MODE === "codex"
     ? new CodexHarness(env.CODEX_TIMEOUT_MINUTES)
     : new FakeCodingHarness();
+
 const workspaceManager = new WorkspaceManager(env.WORKSPACE_ROOT, env.KEEP_WORKSPACES);
 const runner = new LocalRunner(workspaceManager);
 const workflow = createBugFixRestateWorkflow(
@@ -73,6 +75,7 @@ const workflow = createBugFixRestateWorkflow(
     callbackTimeoutMinutes: env.CALLBACK_TIMEOUT_MINUTES,
   },
 );
+
 const queue = createBugFixQueueRestateService(jira, workflow);
 const jiraWebhook = createJiraWebhookIngressService(workflow);
 const jenkinsWebhook = createJenkinsWebhookIngressService(workflow);
@@ -86,11 +89,13 @@ const restateDefinitions = [
   sonarQubeWebhook,
   gitLabWebhook,
 ];
+
 const port = await restate.serve({
   services: restateDefinitions,
   port: env.PORT,
   ...(env.RESTATE_IDENTITY_KEYS ? { identityKeys: env.RESTATE_IDENTITY_KEYS } : {}),
 });
+
 const webhookApi = startWebhookApi({
   port: env.APP_PORT,
   restateIngressUrl: env.RESTATE_INGRESS_URL,
@@ -102,6 +107,7 @@ const webhookApi = startWebhookApi({
     gitlab: gitLabWebhook,
   },
 });
+
 console.log(
   JSON.stringify({
     level: "info",

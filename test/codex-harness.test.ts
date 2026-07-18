@@ -59,6 +59,7 @@ describe("CodexHarness", () => {
         throw new Error("not used");
       },
     };
+
     const harness = new CodexHarness(45, client);
 
     const result = await harness.startTask({
@@ -74,6 +75,7 @@ describe("CodexHarness", () => {
       status: "completed",
       usage: { inputTokens: 12, cachedInputTokens: 3, outputTokens: 5 },
     });
+
     expect(threadOptions).toEqual([
       {
         workingDirectory: "/workspace/abc-1",
@@ -82,6 +84,7 @@ describe("CodexHarness", () => {
         webSearchMode: "disabled",
       },
     ]);
+
     expect(calls).toHaveLength(1);
     expect(calls[0]?.input).toContain("You are resolving one bug");
     expect(calls[0]?.options?.outputSchema).toMatchObject({
@@ -111,6 +114,7 @@ describe("CodexHarness", () => {
         };
       },
     };
+
     const harness = new CodexHarness(45, client);
 
     const result = await harness.continueTask("thread-sdk-2", {

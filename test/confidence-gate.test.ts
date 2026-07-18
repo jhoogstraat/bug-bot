@@ -25,12 +25,14 @@ describe("confidence gate", () => {
       applyConfidenceGate(complete, "invoicing-outbound", "invoicing-outbound").actionable,
     ).toBe(true);
   });
+
   it("blocks before Jira mutation when evidence or repository scope is incomplete", () => {
     const decision = applyConfidenceGate(
       { ...complete, rootCauseConfidence: "medium", missingInformation: ["production log"] },
       "other",
       "invoicing-outbound",
     );
+
     expect(decision.actionable).toBe(false);
     expect(decision.reason).toContain("root-cause confidence");
     expect(decision.reason).toContain("production log");

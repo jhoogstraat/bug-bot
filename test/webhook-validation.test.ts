@@ -10,6 +10,7 @@ describe("webhook validation", () => {
         issue: { key: "ABC-1", fields: { issuetype: { name: "Bug" }, status: { name: "Open" } } },
       }).issue.key,
     ).toBe("ABC-1"));
+
   it("rejects non-bugs", () =>
     expect(() =>
       validateJiraWebhook({
@@ -18,6 +19,7 @@ describe("webhook validation", () => {
         issue: { key: "ABC-1", fields: { issuetype: { name: "Task" }, status: { name: "Open" } } },
       }),
     ).toThrow());
+
   it("rejects oversized Jenkins logs", () =>
     expect(() =>
       validateJenkinsWebhook({

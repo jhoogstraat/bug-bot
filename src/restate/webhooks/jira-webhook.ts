@@ -20,12 +20,14 @@ export function validateJiraWebhook(value: unknown): z.infer<typeof jiraWebhookS
   const event = jiraWebhookSchema.parse(value);
   if (event.issue.fields.issuetype.name.toLowerCase() !== "bug")
     throw new JiraWebhookValidationError("Only bug tickets are supported");
+
   if (
     !new Set(["ready for development", "ready for investigation", "open"]).has(
       event.issue.fields.status.name.toLowerCase(),
     )
   )
     throw new JiraWebhookValidationError("Ticket is not ready");
+
   return event;
 }
 
@@ -45,6 +47,7 @@ export function createJiraWebhookIngressService(workflow: BugFixRestateWorkflow)
         ctx
           .workflowSendClient(workflow, id)
           .run({ issueKey: event.issue.key, generation: event.generation });
+
         return { accepted: true, workflowId: id };
       },
     },

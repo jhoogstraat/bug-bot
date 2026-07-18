@@ -15,16 +15,19 @@ export interface Workspace {
   branchName: string;
   baseCommitSha: string;
 }
+
 export interface CreateWorkspaceInput {
   workflowId: string;
   issueKey: string;
   shortSlug: string;
   repository: RepositoryConfig;
 }
+
 export type ExecuteHarnessInput =
   | { kind: "start"; harness: CodingHarness; task: StartHarnessTaskInput }
   | { kind: "continue"; harness: CodingHarness; sessionId: string; task: ContinueHarnessTaskInput }
   | { kind: "revise"; harness: CodingHarness; sessionId: string; task: ReviseHarnessTaskInput };
+
 export interface ExecutionResult {
   result: HarnessRunResult;
 }

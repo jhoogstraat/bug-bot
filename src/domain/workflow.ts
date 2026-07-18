@@ -46,21 +46,25 @@ export interface StartBugFixInput {
   issueKey: string;
   generation: number;
 }
+
 export interface BugFixWorkflowResult {
   runId: string;
   state: WorkflowStage;
   detail?: string;
 }
+
 export interface CiCallback {
   correlation: CallbackCorrelation;
   result: CiResult;
   failure?: CompactCiFailure;
 }
+
 export interface SonarCallback {
   correlation: CallbackCorrelation;
   qualityGate: "passed" | "failed";
   findings: SonarFinding[];
 }
+
 export interface MergeRequestReviewCallback {
   correlation: CallbackCorrelation;
   requiredFeedbackResolved: boolean;

@@ -10,12 +10,14 @@ const finding = (file: string, isNewCode: boolean, qualityGateFailure = false): 
   isNewCode,
   qualityGateFailure,
 });
+
 describe("filterSonarFindings", () => {
   it("returns only new changed-file and quality-gate findings", () => {
     const result = filterSonarFindings(
       [finding("src/a.ts", true), finding("src/b.ts", true), finding("src/c.ts", false, true)],
       ["src/a.ts"],
     );
+
     expect(result.map((item) => item.file)).toEqual(["src/a.ts", "src/c.ts"]);
   });
 });

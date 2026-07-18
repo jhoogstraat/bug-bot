@@ -46,6 +46,7 @@ export function startWebhookApi(options: WebhookApiOptions) {
       const providerEventId = extractProviderEventId(event);
       if (!providerEventId)
         return new Response("Webhook event requires providerEventId", { status: 400 });
+
       try {
         const result = await dispatch(route, event, providerEventId, ingress, options.services);
         return Response.json(result, { status: 202 });

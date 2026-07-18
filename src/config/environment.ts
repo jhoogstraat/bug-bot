@@ -17,6 +17,7 @@ const schema = z.object({
         ?.split(",")
         .map((key) => key.trim())
         .filter(Boolean);
+
       return keys?.length ? keys : undefined;
     }),
   WEBHOOK_SIGNING_SECRET: z.string().min(32).optional(),
@@ -35,5 +36,6 @@ export const loadEnvironment = (
   const environment = schema.parse(source);
   if (environment.ADAPTER_MODE === "real" && !environment.WEBHOOK_SIGNING_SECRET)
     throw new Error("WEBHOOK_SIGNING_SECRET is required in real adapter mode");
+
   return environment;
 };

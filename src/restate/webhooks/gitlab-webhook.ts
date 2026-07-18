@@ -32,6 +32,7 @@ export function createGitLabWebhookIngressService(workflow: BugFixRestateWorkflo
           },
           ...(event.detail ? { detail: event.detail } : {}),
         });
+
         return { accepted: true };
       },
     },

@@ -29,11 +29,13 @@ export interface JiraCommentDto {
   created?: string;
   body: unknown;
 }
+
 export interface JiraIssueLinkDto {
   type: { inward: string; outward: string };
   inwardIssue?: { key: string; fields: { summary: string } };
   outwardIssue?: { key: string; fields: { summary: string } };
 }
+
 export interface JiraAttachmentDto {
   id: string;
   filename: string;

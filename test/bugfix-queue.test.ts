@@ -14,6 +14,7 @@ describe("fixed Jira queue", () => {
       { issues: [issue("ABC-1"), issue("ABC-2")], nextPageToken: "next", isLast: false },
       { issues: [issue("ABC-2"), issue("ABC-3")], isLast: true },
     ];
+
     let calls = 0;
     const jira: JiraClient = {
       getIssue: async (key) => issue(key),
@@ -26,18 +27,21 @@ describe("fixed Jira queue", () => {
       ensureMergeRequestLink: async () => undefined,
       ensureReadyToMerge: async () => undefined,
     };
+
     const queue = await captureBugFixQueue(
       jira,
       "https://jira.example/issues/?filter=123",
       7,
       () => new Date("2026-01-02T03:04:05Z"),
     );
+
     expect(calls).toBe(2);
     expect(queue.entries).toEqual([
       { issueKey: "ABC-1", generation: 7 },
       { issueKey: "ABC-2", generation: 7 },
       { issueKey: "ABC-3", generation: 7 },
     ]);
+
     expect(queue.capturedAt).toBe("2026-01-02T03:04:05.000Z");
   });
 });

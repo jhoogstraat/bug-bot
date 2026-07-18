@@ -15,6 +15,7 @@ const state: BugFixWorkflowState = {
   maxRepairAttempts: 3,
   tokenUsage: emptyTokenUsage(),
 };
+
 const failure = (category: CompactCiFailure["category"], fingerprint = "f"): CompactCiFailure => ({
   provider: "jenkins",
   buildId: "1",
@@ -25,11 +26,14 @@ const failure = (category: CompactCiFailure["category"], fingerprint = "f"): Com
   removedLineCount: 0,
   fingerprint,
 });
+
 describe("repair policy", () => {
   it("repairs code failures", () =>
     expect(decideRepair(state, failure("test"), "a").action).toBe("repair"));
+
   it("stops for infrastructure", () =>
     expect(decideRepair(state, failure("infrastructure"), "a").action).toBe("human_required"));
+
   it("stops repeated unchanged failures", () =>
     expect(
       decideRepair(
@@ -38,6 +42,7 @@ describe("repair policy", () => {
         "a",
       ).action,
     ).toBe("human_required"));
+
   it("stops at the repair limit", () =>
     expect(decideRepair({ ...state, repairAttempt: 3 }, failure("test"), "a").action).toBe(
       "human_required",

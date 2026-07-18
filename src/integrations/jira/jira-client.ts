@@ -5,6 +5,7 @@ export interface JiraSearchPage {
   nextPageToken?: string;
   isLast: boolean;
 }
+
 export interface JiraClient {
   getIssue(issueKey: string): Promise<JiraIssueDto>;
   searchOpenBugs(filterUrl: string, nextPageToken?: string): Promise<JiraSearchPage>;
@@ -26,6 +27,7 @@ export class HttpJiraClient implements JiraClient {
         signal: AbortSignal.timeout(20_000),
       },
     );
+
     if (!response.ok) throw new Error(`Jira returned ${response.status}`);
     return (await response.json()) as JiraIssueDto;
   }
@@ -42,6 +44,7 @@ export class HttpJiraClient implements JiraClient {
       nextPageToken?: string;
       isLast?: boolean;
     };
+
     return {
       issues: body.issues,
       ...(body.nextPageToken ? { nextPageToken: body.nextPageToken } : {}),
@@ -52,6 +55,7 @@ export class HttpJiraClient implements JiraClient {
     const myself = await this.request(new URL(`${this.baseUrl}/rest/api/3/myself`), {
       headers: { accept: "application/json" },
     });
+
     const { accountId } = (await myself.json()) as { accountId: string };
     await this.request(
       new URL(`${this.baseUrl}/rest/api/3/issue/${encodeURIComponent(issueKey)}/assignee`),
@@ -61,18 +65,21 @@ export class HttpJiraClient implements JiraClient {
         body: JSON.stringify({ accountId }),
       },
     );
+
     await this.transition(issueKey, "In Progress");
   }
   async ensureMergeRequestLink(issueKey: string, mergeRequestUrl: string): Promise<void> {
     const url = new URL(
       `${this.baseUrl}/rest/api/3/issue/${encodeURIComponent(issueKey)}/remotelink`,
     );
+
     const globalId = `ticket-bot:${mergeRequestUrl}`;
     const existing = (await (
       await this.request(url, { headers: { accept: "application/json" } })
     ).json()) as Array<{
       globalId?: string;
     }>;
+
     if (existing.some((link) => link.globalId === globalId)) return;
     await this.request(url, {
       method: "POST",
@@ -89,16 +96,19 @@ export class HttpJiraClient implements JiraClient {
     const url = new URL(
       `${this.baseUrl}/rest/api/3/issue/${encodeURIComponent(issueKey)}/transitions`,
     );
+
     const available = await this.request(url, { headers: { accept: "application/json" } });
     const body = (await available.json()) as { transitions: Array<{ id: string; name: string }> };
     const transition = body.transitions.find(
       (item) => item.name.toLowerCase() === targetName.toLowerCase(),
     );
+
     if (!transition) {
       const refreshed = await this.getIssue(issueKey);
       if (refreshed.fields.status.name.toLowerCase() === targetName.toLowerCase()) return;
       throw new Error(`Jira transition ${targetName} is unavailable for ${issueKey}`);
     }
+
     await this.request(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -148,6 +158,7 @@ export class FakeJiraClient implements JiraClient {
       )
     )
       this.linkedMergeRequests.push({ issueKey, mergeRequestUrl });
+
     return Promise.resolve();
   }
   ensureReadyToMerge(issueKey: string): Promise<void> {
@@ -161,5 +172,6 @@ function extractFilterId(filterUrl: string): string {
   const filter = url.searchParams.get("filter") ?? url.pathname.match(/\/filters?\/(\d+)/)?.[1];
   if (!filter || !/^\d+$/.test(filter))
     throw new Error("Jira filter URL does not contain a numeric filter ID");
+
   return filter;
 }

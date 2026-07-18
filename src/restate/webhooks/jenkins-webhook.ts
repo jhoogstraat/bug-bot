@@ -14,6 +14,7 @@ const schema = z.object({
   stage: z.string().optional(),
   log: z.string().max(2_000_000).default(""),
 });
+
 export const validateJenkinsWebhook = (value: unknown) => schema.parse(value);
 
 export function createJenkinsWebhookIngressService(workflow: BugFixRestateWorkflow) {
@@ -35,6 +36,7 @@ export function createJenkinsWebhookIngressService(workflow: BugFixRestateWorkfl
           ...(event.branch ? { branch: event.branch } : {}),
           commitSha: event.commitSha,
         };
+
         await ctx.workflowClient(workflow, event.workflowId).onJenkins({
           correlation: {
             attempt: event.attempt,
@@ -52,6 +54,7 @@ export function createJenkinsWebhookIngressService(workflow: BugFixRestateWorkfl
               }
             : {}),
         });
+
         return { accepted: true };
       },
     },
