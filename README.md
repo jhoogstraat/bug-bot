@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/ticket-bot-icon.png" alt="Ticket Bot icon" width="180">
+</p>
+
 # Ticket Bot
 
 Ticket Bot is an initial vertical slice of a durable bug-resolution platform. Jira, GitLab, Jenkins, SonarQube, retry policy, state, and context reduction are ordinary TypeScript. Codex is used only for repository investigation, editing, repair, and independent review.
