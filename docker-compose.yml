@@ -1,6 +1,6 @@
 services:
   restate:
-    image: docker.restate.dev/restatedev/restate:1.16.2
+    image: docker.restate.dev/restatedev/restate:1.7.2
     ports:
       - "8080:8080"
       - "9070:9070"
