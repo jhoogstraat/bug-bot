@@ -1,13 +1,6 @@
 import type { CompactCiFailure, SonarFinding } from "../domain/ci.js";
-import type { TicketAnalysis } from "../features/bugfix/analysis.js";
+import type { TicketAnalysis } from "../domain/ticket-analysis.js";
 import type { NormalizedBugTicket } from "../domain/ticket.js";
-
-export interface HarnessUsage {
-  inputTokens?: number;
-  cachedInputTokens?: number;
-  outputTokens?: number;
-  estimatedCost?: number;
-}
 
 export interface HarnessRunResult {
   sessionId: string;
@@ -17,7 +10,6 @@ export interface HarnessRunResult {
   changedFiles: string[];
   validation: { commandsRun: string[]; succeeded: boolean; failures: string[] };
   commitSha?: string;
-  usage?: HarnessUsage;
   humanInputRequest?: string;
 }
 
@@ -86,7 +78,6 @@ export interface HarnessReviewResult {
     problem: string;
     correction: string;
   }>;
-  usage?: HarnessUsage;
 }
 
 export interface CodingHarness {
@@ -95,8 +86,4 @@ export interface CodingHarness {
   continueTask(sessionId: string, input: ContinueHarnessTaskInput): Promise<HarnessRunResult>;
   reviseTask(sessionId: string, input: ReviseHarnessTaskInput): Promise<HarnessRunResult>;
   review(input: ReviewHarnessTaskInput): Promise<HarnessReviewResult>;
-}
-
-export function usedTokens(usage?: HarnessUsage): number {
-  return (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0);
 }

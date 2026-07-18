@@ -42,7 +42,7 @@ Follow this order for an end-to-end mental model. On a first pass, read public t
 2. [`src/features/bugfix/bugfix-queue.restate-service.ts`](../src/features/bugfix/bugfix-queue.restate-service.ts) — how a Jira filter becomes one immutable, deduplicated batch of independent ticket workflows.
 3. [`src/features/bugfix/bugfix.restate-workflow.ts`](../src/features/bugfix/bugfix.restate-workflow.ts) — the canonical, sequential ticket lifecycle: operations, durable state, callback waits, and terminal outcomes.
 4. [`src/features/bugfix/workflow-state.ts`](../src/features/bugfix/workflow-state.ts) — the durable state, grouped stage types, transition helpers, and callback contracts.
-5. [`src/features/bugfix/analysis.ts`](../src/features/bugfix/analysis.ts) — the deterministic confidence and repository gate.
+5. [`src/workflows/bugfix/tasks/analysis.ts`](../src/workflows/bugfix/tasks/analysis.ts) — the deterministic confidence and repository gate.
 6. [`src/features/bugfix/coding/coding-harness.ts`](../src/features/bugfix/coding/coding-harness.ts) — the provider-neutral contract for investigation, implementation, repair, revision, and independent review.
 7. [`src/features/bugfix/coding/codex-coding-harness.ts`](../src/features/bugfix/coding/codex-coding-harness.ts), [`src/features/bugfix/coding/codex-prompts.ts`](../src/features/bugfix/coding/codex-prompts.ts), and [`src/features/bugfix/coding/codex-result-parser.ts`](../src/features/bugfix/coding/codex-result-parser.ts) — how bounded Codex processes receive prompts and return validated structured results.
 8. [`src/features/bugfix/workspace/local-git-workspaces.ts`](../src/features/bugfix/workspace/local-git-workspaces.ts) — containment-checked local Git workspaces, branches, validation, commits, and pushes.
@@ -58,7 +58,7 @@ For a narrower question, jump directly to the matching responsibility below rath
 | How are tickets selected?                     | [`src/features/bugfix/bugfix-queue.restate-service.ts`](../src/features/bugfix/bugfix-queue.restate-service.ts)     | Fixed queue capture and independent workflow dispatch                          |
 | What happens next for one ticket?             | [`src/features/bugfix/bugfix.restate-workflow.ts`](../src/features/bugfix/bugfix.restate-workflow.ts)               | Ordering, durability, retries, waits, and state transitions                    |
 | How is one operation performed?               | [`src/features/bugfix/bugfix.restate-workflow.ts`](../src/features/bugfix/bugfix.restate-workflow.ts)               | Jira evidence, workspaces, harness calls, validation, publication, and handoff |
-| Why was a ticket blocked?                     | [`src/features/bugfix/analysis.ts`](../src/features/bugfix/analysis.ts)                                             | Analysis contract and deterministic confidence/repository gate                 |
+| Why was a ticket blocked?                     | [`src/workflows/bugfix/tasks/analysis.ts`](../src/workflows/bugfix/tasks/analysis.ts)                               | Analysis contract and deterministic confidence/repository gate                 |
 | Why was CI repaired or stopped?               | [`src/features/bugfix/bugfix.restate-workflow.ts`](../src/features/bugfix/bugfix.restate-workflow.ts)               | Bounded repair eligibility and stop conditions                                 |
 | What may the coding agent do?                 | [`src/features/bugfix/coding/coding-harness.ts`](../src/features/bugfix/coding/coding-harness.ts)                   | Agent-facing operation and result boundaries                                   |
 | How is Codex invoked safely?                  | [`src/features/bugfix/coding/codex-coding-harness.ts`](../src/features/bugfix/coding/codex-coding-harness.ts)       | Bounded subprocess sessions, permissions, timeouts, and schemas                |
@@ -72,7 +72,7 @@ For a narrower question, jump directly to the matching responsibility below rath
 - **Per-ticket workflow** — one Restate workflow identified as `bugfix/<ISSUE-KEY>/<generation>`. It owns durable ordering and state for exactly one ticket attempt.
 - **Generation** — an explicit run number that allows a later attempt for the same Jira key without colliding with an earlier workflow.
 - **Journaled operation** — an external or non-deterministic action wrapped in `ctx.run`; Restate records its result so recovery does not blindly repeat completed work.
-- **Durable state** — the compact workflow record containing identifiers, approved analysis, workspace and commit data, MR reference, attempts, token totals, and current stage—not full conversations or raw upstream payloads.
+- **Durable state** — the compact workflow record containing identifiers, approved analysis, workspace and commit data, MR reference, attempts, and current stage—not full conversations or raw upstream payloads.
 - **Durable callback** — a Restate promise resolved later by a Jenkins, SonarQube, or GitLab webhook. Callbacks are correlated to the current repair cycle and commit.
 - **Coding harness** — the provider-neutral interface used for investigation, implementation, repair, revision, and fresh review. Codex is one adapter behind it.
 - **Approved analysis** — the structured investigation result that passed the deterministic gate and becomes the implementation and review contract.

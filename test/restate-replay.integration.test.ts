@@ -1,27 +1,16 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { promisify } from "node:util";
 import * as clients from "@restatedev/restate-sdk-clients";
 import * as restate from "@restatedev/restate-sdk";
 import { RestateTestEnvironment } from "@restatedev/restate-sdk-testcontainers";
 import { createEndpointHandler } from "@restatedev/restate-sdk";
 import * as http2 from "node:http2";
-import type { GitLabClient } from "../src/integrations/gitlab/gitlab-client.js";
-import type { StartBugFixInput } from "../src/features/bugfix/workflow-state.js";
-import type { RepositoryConfig } from "../src/domain/repository.js";
-import { FakeCodingHarness } from "../src/coding/fake-coding-harness.js";
 import { FakeJiraClient } from "../src/integrations/jira/jira-client.js";
 import type { JiraIssueDto } from "../src/integrations/jira/jira-types.js";
-import { LocalGitWorkspaces } from "../src/features/bugfix/workspace/local-git-workspaces.js";
-import { createBugFixQueueRestateService } from "../src/features/bugfix/bugfix-queue.restate-service.js";
-import {
-  createBugFixRestateWorkflow,
-  type BugFixRestateWorkflow,
-} from "../src/features/bugfix/bugfix.restate-workflow.js";
+import { createBugFixQueueRestateService } from "../src/entrypoints/bugfix-queue.restate-service.js";
+import type { BugFixWorkflow } from "../src/workflows/bugfix/workflow.js";
 
 const exec = promisify(execFile);
 
@@ -43,18 +32,13 @@ const issue: JiraIssueDto = {
 const queueTarget = restate.workflow({
   name: "QueueReplayTarget",
   handlers: {
-    run: restate.handlers.workflow.workflow(
-      async (ctx: restate.WorkflowContext, input: StartBugFixInput) => {
-        ctx.set("input", input);
-        return input;
-      },
-    ),
+    run: async (_ctx: restate.WorkflowContext, issueKey: string) => issueKey,
   },
 });
 
 const queue = createBugFixQueueRestateService(
   new FakeJiraClient(new Map([[issue.key, issue]])),
-  queueTarget as unknown as BugFixRestateWorkflow,
+  queueTarget as unknown as typeof BugFixWorkflow,
 );
 
 const queueInvoker = restate.service({
@@ -95,118 +79,12 @@ describeWithRestate("Restate always-replay integration", () => {
 
     expect(queueResult.entries).toEqual([{ issueKey: "ABC-1", generation: 3 }]);
     const workflowResult = await ingress
-      .workflowClient(queueTarget, "bugfix/ABC-1/3")
+      .workflowClient(queueTarget, "bugfix/ABC-1")
       .workflowAttach();
 
-    expect(workflowResult).toEqual({ issueKey: "ABC-1", generation: 3 });
+    expect(workflowResult).toBe("ABC-1");
   });
 });
-
-describeWithRestate("Restate workflow state recovery", () => {
-  let environment: RestateIntegrationEnvironment | undefined;
-  let ingress: clients.Ingress;
-  let invoker: ReturnType<typeof createWorkflowReplayInvoker>;
-  let root = "";
-
-  beforeAll(async () => {
-    root = await mkdtemp(join(tmpdir(), "ticket-bot-restate-workflow-"));
-    const source = join(root, "source");
-    await exec("git", ["init", "-b", "main", source]);
-    await writeFile(join(source, "README.md"), "fixture\n", "utf8");
-    await exec("git", ["-C", source, "add", "README.md"]);
-    await exec("git", [
-      "-C",
-      source,
-      "-c",
-      "user.name=Test",
-      "-c",
-      "user.email=test@localhost",
-      "-c",
-      "commit.gpgsign=false",
-      "commit",
-      "-m",
-      "initial",
-    ]);
-
-    const repository: RepositoryConfig = {
-      id: "fixture",
-      jiraComponents: ["Ticket Bot"],
-      cloneUrl: source,
-      gitlabProjectId: "group/fixture",
-      defaultBranch: "main",
-      buildCommands: [],
-      testCommands: [],
-      lintCommands: [],
-      harness: "codex",
-      limits: {
-        maxAgentTurns: 10,
-        maxChangedFiles: 15,
-        maxRepairAttempts: 3,
-        maxExecutionMinutes: 5,
-      },
-    };
-
-    const jira = new FakeJiraClient(new Map([[issue.key, issue]]));
-    const workspaces = new LocalGitWorkspaces(join(root, "workspaces"));
-    const gitlab: GitLabClient = {
-      createDraftMergeRequest: async () => {
-        throw new restate.TerminalError("Merge request creation was rejected");
-      },
-    };
-
-    const workflow = createBugFixRestateWorkflow({
-      jira,
-      gitlab,
-      codingHarness: new FakeCodingHarness(),
-      workspaces,
-      resolveRepository: () => repository,
-      actionableRepositoryId: repository.id,
-    });
-
-    invoker = createWorkflowReplayInvoker(workflow);
-    environment = await startRestateIntegrationEnvironment({
-      services: [workflow, invoker],
-      alwaysReplay: true,
-      disableRetries: true,
-      storage: "memory",
-    });
-
-    ingress = clients.connect({ url: environment.baseUrl() });
-  }, 30_000);
-
-  afterAll(async () => {
-    await environment?.stop();
-    if (root) await rm(root, { recursive: true, force: true });
-  });
-
-  it("keeps the initialized workflow context when a later terminal step fails", async () => {
-    const input = { issueKey: issue.key, generation: 1 };
-    const result = await ingress.serviceClient(invoker).run(input);
-    const state = await ingress.serviceClient(invoker).status(input);
-
-    expect(result).toEqual({
-      runId: "bugfix/ABC-1/1",
-      state: "FAILED",
-      detail: "Merge request creation was rejected",
-    });
-
-    expect(state).toMatchObject({ repository: { id: "fixture" }, state: "FAILED" });
-  });
-});
-
-function createWorkflowReplayInvoker(workflow: BugFixRestateWorkflow) {
-  return restate.service({
-    name: "WorkflowReplayInvoker",
-    handlers: {
-      run: async (ctx: restate.Context, input: StartBugFixInput) =>
-        await ctx
-          .workflowClient(workflow, `bugfix/${input.issueKey}/${input.generation}`)
-          .run(input),
-      status: async (ctx: restate.Context, input: StartBugFixInput) =>
-        await ctx.workflowClient(workflow, `bugfix/${input.issueKey}/${input.generation}`).status(),
-    },
-  });
-}
 
 interface RestateIntegrationEnvironment {
   baseUrl(): string;

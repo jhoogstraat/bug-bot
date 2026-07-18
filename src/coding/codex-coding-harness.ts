@@ -1,12 +1,11 @@
 import { Codex, type RunResult, type ThreadOptions, type TurnOptions } from "@openai/codex-sdk";
-import type { TicketAnalysis } from "../features/bugfix/analysis.js";
+import type { TicketAnalysis } from "../domain/ticket-analysis.js";
 import type {
   AnalyzeHarnessTaskInput,
   CodingHarness,
   ContinueHarnessTaskInput,
   HarnessReviewResult,
   HarnessRunResult,
-  HarnessUsage,
   ReviewHarnessTaskInput,
   ReviseHarnessTaskInput,
   StartHarnessTaskInput,
@@ -40,7 +39,6 @@ export interface CodexClient {
 interface InvocationResult {
   sessionId: string;
   output: unknown;
-  usage?: HarnessUsage;
 }
 
 export class CodexHarness implements CodingHarness {
@@ -79,7 +77,6 @@ export class CodexHarness implements CodingHarness {
     return {
       ...parseHarnessRunResult(invocation.output),
       sessionId: invocation.sessionId,
-      ...(invocation.usage ? { usage: invocation.usage } : {}),
     };
   }
 
@@ -97,7 +94,6 @@ export class CodexHarness implements CodingHarness {
     return {
       ...parseHarnessRunResult(invocation.output),
       sessionId: invocation.sessionId,
-      ...(invocation.usage ? { usage: invocation.usage } : {}),
     };
   }
 
@@ -112,7 +108,6 @@ export class CodexHarness implements CodingHarness {
     return {
       ...parseHarnessRunResult(invocation.output),
       sessionId: invocation.sessionId,
-      ...(invocation.usage ? { usage: invocation.usage } : {}),
     };
   }
 
@@ -128,7 +123,6 @@ export class CodexHarness implements CodingHarness {
     return {
       ...parseHarnessReviewResult(invocation.output),
       sessionId: invocation.sessionId,
-      ...(invocation.usage ? { usage: invocation.usage } : {}),
     };
   }
 
@@ -164,7 +158,6 @@ export class CodexHarness implements CodingHarness {
       return {
         sessionId,
         output: parseJsonResponse(turn.finalResponse),
-        ...(turn.usage ? { usage: usageFrom(turn.usage) } : {}),
       };
     } catch (error) {
       if (timeoutState.elapsed) throw new Error(`Codex exceeded ${this.timeoutMinutes} minutes`);
@@ -192,16 +185,4 @@ function parseJsonResponse(response: string): unknown {
   } catch (error) {
     throw new Error(`Codex returned invalid structured output: ${String(error)}`);
   }
-}
-
-function usageFrom(usage: {
-  input_tokens: number;
-  cached_input_tokens: number;
-  output_tokens: number;
-}): HarnessUsage {
-  return {
-    inputTokens: usage.input_tokens,
-    cachedInputTokens: usage.cached_input_tokens,
-    outputTokens: usage.output_tokens,
-  };
 }

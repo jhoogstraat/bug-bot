@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import {
   LocalGitWorkspaces,
   type CreateRepositoryWorkspaceInput,
-} from "../src/features/bugfix/workspace/local-git-workspaces.js";
+} from "../src/integrations/git/local-git-workspaces.js";
 
 const exec = promisify(execFile);
 const temporaryRoots: string[] = [];

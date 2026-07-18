@@ -1,15 +1,6 @@
 import { z } from "zod";
 import type { HarnessReviewResult, HarnessRunResult } from "./coding-harness.js";
-import type { TicketAnalysis } from "../features/bugfix/analysis.js";
-
-const usage = z
-  .object({
-    inputTokens: z.number().nonnegative().optional(),
-    cachedInputTokens: z.number().nonnegative().optional(),
-    outputTokens: z.number().nonnegative().optional(),
-    estimatedCost: z.number().nonnegative().optional(),
-  })
-  .optional();
+import type { TicketAnalysis } from "../domain/ticket-analysis.js";
 
 const runSchema = z.object({
   sessionId: z.string().default("unknown"),
@@ -23,7 +14,6 @@ const runSchema = z.object({
     failures: z.array(z.string().max(2_000)).max(20),
   }),
   commitSha: z.string().optional(),
-  usage,
   humanInputRequest: z.string().max(4_000).optional(),
 });
 
@@ -41,7 +31,6 @@ const reviewSchema = z.object({
       }),
     )
     .max(30),
-  usage,
 });
 
 const analysisSchema = z.object({

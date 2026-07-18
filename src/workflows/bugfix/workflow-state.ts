@@ -1,6 +1,6 @@
 import type { CompactCiFailure, CiResult, SonarFinding } from "../../domain/ci.js";
 import type { MergeRequest } from "../../domain/merge-request.js";
-import type { TicketAnalysis } from "./analysis.js";
+import type { TicketAnalysis } from "../../domain/ticket-analysis.js";
 
 /** Stages before a change is ready for CI and external review. */
 export type PreparationStage =
@@ -13,13 +13,6 @@ export type DeliveryStage = "CI_RUNNING" | "CI_FAILED" | "REPAIRING" | "REVIEWIN
 export type TerminalStage = "DONE" | "HUMAN_REQUIRED" | "FAILED";
 
 export type WorkflowStage = PreparationStage | DeliveryStage | TerminalStage;
-
-export interface TokenUsage {
-  initialRun: number;
-  repairs: number;
-  review: number;
-  total: number;
-}
 
 export interface BugFixWorkflowState {
   runId: string;
@@ -38,7 +31,6 @@ export interface BugFixWorkflowState {
   maxRepairAttempts: number;
   lastFailureFingerprint?: string;
   lastCommitAtFailure?: string;
-  tokenUsage: TokenUsage;
   statusDetail?: string;
 }
 
@@ -76,22 +68,6 @@ export interface CallbackCorrelation {
   attempt: number;
   commitSha: string;
   providerEventId: string;
-}
-
-export const emptyTokenUsage = (): TokenUsage => ({
-  initialRun: 0,
-  repairs: 0,
-  review: 0,
-  total: 0,
-});
-
-export function addTokenUsage(
-  current: TokenUsage,
-  stage: "initialRun" | "repairs" | "review",
-  tokens: number,
-): TokenUsage {
-  const next = { ...current, [stage]: current[stage] + Math.max(0, tokens) };
-  return { ...next, total: next.initialRun + next.repairs + next.review };
 }
 
 /** Pause automation and expose the reason that human attention is required. */

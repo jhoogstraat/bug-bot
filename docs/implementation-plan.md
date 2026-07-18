@@ -4,7 +4,7 @@
 
 - Scope: strict TypeScript, environment validation, ticket/workflow/harness/CI/MR types, repository registry, errors.
 - Deliverables: build/lint/test configuration and documented boundaries.
-- Tests: token aggregation and repository resolution.
+- Tests: repository resolution.
 - Exit: clean build with no untyped external inputs.
 - Risks: evolving SDK contracts. Pin and test dependency upgrades.
 
@@ -64,7 +64,7 @@ Status: initial Jenkins repair loop complete.
 
 - Scope: fresh read-only session, base diff, tests, CI, Sonar, actionable verdict, Jira ready-to-merge handoff.
 - Deliverables: review-ready state without merge authority.
-- Tests: blocking finding, unrelated diff, failed quality gate, token accounting.
+- Tests: blocking finding, unrelated diff, failed quality gate.
 - Exit: accepted fixes have no unresolved important/blocking feedback.
 - Risks: reviewer consistency and diff size; large diffs should escalate before review.
 

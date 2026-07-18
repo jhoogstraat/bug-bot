@@ -1,16 +1,16 @@
 import * as restate from "@restatedev/restate-sdk";
 import { z } from "zod";
-import type { BugFixQueue } from "../../domain/queue.js";
-import type { JiraClient } from "../../integrations/jira/jira-client.js";
-import type { BugFixRestateWorkflow } from "./workflow.js";
-import { workflowId } from "./workflow.js";
+import type { BugFixQueue } from "../domain/queue.js";
+import type { JiraClient } from "../integrations/jira/jira-client.js";
+import type { BugFixWorkflow } from "../workflows/bugfix/workflow.js";
+import { workflowId } from "../workflows/bugfix/workflow.js";
 
 const inputSchema = z.object({
   filterUrl: z.url(),
   generation: z.number().int().positive().default(1),
 });
 
-export function createBugFixQueueRestateService(jira: JiraClient, workflow: BugFixRestateWorkflow) {
+export function createBugFixQueueRestateService(jira: JiraClient, workflow: typeof BugFixWorkflow) {
   return restate.service({
     name: "BugFixQueue",
     options: {
@@ -18,14 +18,13 @@ export function createBugFixQueueRestateService(jira: JiraClient, workflow: BugF
     },
     handlers: {
       run: async (ctx: restate.Context, raw: unknown) => {
-
         const input = inputSchema.parse(raw);
         const queue = await ctx.run("capture-fixed-jira-queue", () =>
           captureBugFixQueue(jira, input.filterUrl, input.generation),
         );
 
         for (const entry of queue.entries) {
-          ctx.workflowSendClient(workflow, workflowId(entry.issueKey, entry.generation)).run(entry);
+          ctx.workflowSendClient(workflow, workflowId(entry.issueKey)).run(entry.issueKey);
         }
 
         return queue;

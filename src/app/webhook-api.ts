@@ -1,16 +1,10 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import * as clients from "@restatedev/restate-sdk-clients";
 import { z } from "zod";
-import { createGitLabWebhookIngressService } from "../features/bugfix/ingress/gitlab-webhook.restate-service.js";
-import { createJenkinsWebhookIngressService } from "../features/bugfix/ingress/jenkins-webhook.restate-service.js";
-import { createJiraWebhookIngressService } from "../features/bugfix/ingress/jira-webhook.restate-service.js";
-import { createSonarQubeWebhookIngressService } from "../features/bugfix/ingress/sonarqube-webhook.restate-service.js";
+import { createJiraWebhookIngressService } from "../entrypoints/jira-webhook.restate-service.js";
 
 type WebhookRestateServices = {
   jira: ReturnType<typeof createJiraWebhookIngressService>;
-  jenkins: ReturnType<typeof createJenkinsWebhookIngressService>;
-  sonarqube: ReturnType<typeof createSonarQubeWebhookIngressService>;
-  gitlab: ReturnType<typeof createGitLabWebhookIngressService>;
 };
 
 export interface WebhookApiOptions {
@@ -69,18 +63,6 @@ async function dispatch(
     case "/webhooks/jira":
       return await ingress
         .serviceClient(services.jira)
-        .receive(event, clients.rpc.opts({ idempotencyKey: providerEventId }));
-    case "/webhooks/jenkins":
-      return await ingress
-        .serviceClient(services.jenkins)
-        .receive(event, clients.rpc.opts({ idempotencyKey: providerEventId }));
-    case "/webhooks/sonarqube":
-      return await ingress
-        .serviceClient(services.sonarqube)
-        .receive(event, clients.rpc.opts({ idempotencyKey: providerEventId }));
-    case "/webhooks/gitlab":
-      return await ingress
-        .serviceClient(services.gitlab)
         .receive(event, clients.rpc.opts({ idempotencyKey: providerEventId }));
     default:
       throw new Error(`Unsupported webhook route: ${route}`);

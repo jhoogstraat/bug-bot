@@ -1,36 +1,11 @@
-import type { NormalizedBugTicket } from "../../domain/ticket.js";
-
-export type Confidence = "high" | "medium" | "low";
-
-export interface TicketAnalysis {
-  issueKey: string;
-  summary: string;
-  rootCauseConfidence: Confidence;
-  proposedFixConfidence: Confidence;
-  issue: string;
-  rootCause: string;
-  proposedFix: string;
-  expectedFiles: string[];
-  nonGoals: string[];
-  observableBehavior: string[];
-  jiraEvidence: string[];
-  repositoryEvidence: string[];
-  reproductionEvidence: string[];
-  complexity: { rating: "low" | "medium" | "high"; reasoning: string; risks: string[] };
-  missingInformation: string[];
-  humanRequest?: string;
-}
-
-export interface ConfidenceGateDecision {
-  actionable: boolean;
-  reason: string;
-}
+import type { NormalizedBugTicket } from "../../../domain/ticket.js";
+import type { TicketAnalysis } from "../../../domain/ticket-analysis.js";
 
 export function applyConfidenceGate(
   analysis: TicketAnalysis,
   repositoryId: string,
   allowedRepositoryId: string,
-): ConfidenceGateDecision {
+): { actionable: boolean; reason: string } {
   const blockers: string[] = [];
   if (analysis.rootCauseConfidence !== "high") blockers.push("root-cause confidence is not High");
   if (analysis.proposedFixConfidence !== "high")
@@ -58,7 +33,7 @@ export function applyConfidenceGate(
 export function analysisMarkdown(
   ticket: NormalizedBugTicket,
   analysis: TicketAnalysis,
-  decision: ConfidenceGateDecision,
+  decision: { actionable: boolean; reason: string },
 ): string {
   const list = (values: string[]): string =>
     values.length ? values.map((value) => `- ${value}`).join("\n") : "- None";

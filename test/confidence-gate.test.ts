@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { applyConfidenceGate, type TicketAnalysis } from "../src/features/bugfix/analysis.js";
+import type { TicketAnalysis } from "../src/domain/ticket-analysis.js";
+import { applyConfidenceGate } from "../src/workflows/bugfix/tasks/analysis.js";
 
 const complete: TicketAnalysis = {
   issueKey: "ABC-1",

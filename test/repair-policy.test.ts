@@ -1,10 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { CompactCiFailure } from "../src/domain/ci.js";
-import {
-  emptyTokenUsage,
-  type BugFixWorkflowState,
-} from "../src/features/bugfix/workflow-state.js";
-import { decideRepair } from "../src/features/bugfix/bugfix.restate-workflow.js";
+import type { BugFixWorkflowState } from "../src/workflows/bugfix/workflow-state.js";
+import { decideRepair } from "../src/workflows/bugfix/workflow.js";
 
 const state: BugFixWorkflowState = {
   runId: "r",
@@ -15,7 +12,6 @@ const state: BugFixWorkflowState = {
   repairAttempt: 0,
   reviewAttempt: 0,
   maxRepairAttempts: 3,
-  tokenUsage: emptyTokenUsage(),
 };
 
 const failure = (category: CompactCiFailure["category"], fingerprint = "f"): CompactCiFailure => ({

@@ -95,11 +95,11 @@ sequenceDiagram
 
 Jira normalization includes summary, description, acceptance criteria, expected/actual behavior, reproduction steps, environment, affected versions, recent comments, links, attachment metadata/classification, and recent status history. Context is bounded before it reaches a harness. Each investigation writes `ticket-analysis/<KEY>/ANALYSIS.md`; blocked documents include the missing evidence and concrete human action.
 
-The analysis is also stored in durable workflow state so the implementer and fresh reviewer receive the same approved contract. Durable state contains identifiers, repository/workspace/branch, commit SHA, MR reference, analysis, stage, attempts, compact failure fingerprints, and token totals—not conversations or raw upstream payloads.
+The analysis is also stored in durable workflow state so the implementer and fresh reviewer receive the same approved contract. Durable state contains identifiers, repository/workspace/branch, commit SHA, MR reference, analysis, stage, attempts, and compact failure fingerprints—not conversations or raw upstream payloads.
 
 ## Isolation, security, and durability
 
-The bugfix workflow directly coordinates its coding harness and `LocalGitWorkspaces`, the two real execution boundaries. Each ticket uses a deterministic unique clone path and focused branch, preserving unrelated work. Paths are containment-checked; commands use argument arrays; time, output, changed-file, repair, and token context are bounded. The Codex child has workspace-only or read-only access as appropriate and has Jira/GitLab credentials removed.
+The bugfix workflow directly coordinates its coding harness and `LocalGitWorkspaces`, the two real execution boundaries. Each ticket uses a deterministic unique clone path and focused branch, preserving unrelated work. Paths are containment-checked; commands use argument arrays; time, output, changed-file, and repair context are bounded. The Codex child has workspace-only or read-only access as appropriate and has Jira/GitLab credentials removed.
 
 Restate journals queue capture and each external side effect. Workflow identity is `bugfix/<ISSUE-KEY>/<generation>`. Jenkins callbacks for older SHAs are ignored; every repair or review revision advances the callback cycle. A future Kubernetes executor must own both the workspace and coding runtime behind a new feature-local boundary; it must not recreate the deleted forwarding runner.
 

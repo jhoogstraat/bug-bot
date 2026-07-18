@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test";
-import { workflowId } from "../src/features/bugfix/bugfix.restate-workflow.js";
+import { workflowId } from "../src/workflows/bugfix/workflow.js";
 describe("workflow identity", () => {
-  it("is stable per ticket generation", () => {
-    expect(workflowId("ABC-123", 1)).toBe("bugfix/ABC-123/1");
-    expect(workflowId("ABC-123", 1)).toBe(workflowId("ABC-123", 1));
+  it("is stable per ticket", () => {
+    expect(workflowId("ABC-123")).toBe("bugfix/ABC-123");
+    expect(workflowId("ABC-123")).toBe(workflowId("ABC-123"));
   });
 
-  it("changes for a new generation", () =>
-    expect(workflowId("ABC-123", 2)).not.toBe(workflowId("ABC-123", 1)));
+  it("changes for a different ticket", () =>
+    expect(workflowId("ABC-124")).not.toBe(workflowId("ABC-123")));
 });

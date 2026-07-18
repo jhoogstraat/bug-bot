@@ -131,7 +131,7 @@ Durable state includes:
 - repository, workspace, and branch identifiers;
 - base and current commit SHAs;
 - the approved ticket analysis;
-- Codex session and token accounting;
+- Codex session;
 - merge-request reference;
 - repair and review attempt counts;
 - compact failure fingerprints;
@@ -176,7 +176,7 @@ The harness operations are:
 
 ### Codex SDK adapter
 
-[`src/features/bugfix/coding/codex-coding-harness.ts`](../src/features/bugfix/coding/codex-coding-harness.ts) implements `CodingHarness` through the official `@openai/codex-sdk`. The SDK manages local Codex threads and the adapter uses its typed start, resume, structured-output, and usage APIs.
+[`src/features/bugfix/coding/codex-coding-harness.ts`](../src/features/bugfix/coding/codex-coding-harness.ts) implements `CodingHarness` through the official `@openai/codex-sdk`. The SDK manages local Codex threads and the adapter uses its typed start, resume, and structured-output APIs.
 
 Each invocation receives:
 
@@ -210,7 +210,7 @@ This is the most important file for understanding the end-to-end behavior.
 
 ### Confidence policy
 
-[`src/features/bugfix/analysis.ts`](../src/features/bugfix/analysis.ts) defines `TicketAnalysis`, renders the analysis document, and applies the deterministic gate. A ticket is actionable only when:
+[`src/domain/ticket-analysis.ts`](../src/domain/ticket-analysis.ts) defines `TicketAnalysis`; [`src/workflows/bugfix/tasks/analysis.ts`](../src/workflows/bugfix/tasks/analysis.ts) renders the analysis document and applies the deterministic gate. A ticket is actionable only when:
 
 - root-cause confidence is High;
 - proposed-fix confidence is High;
@@ -226,7 +226,7 @@ The workflow's `decideRepair` policy determines whether a Jenkins failure may tr
 
 The bugfix data contracts are under [`src/features/bugfix`](../src/features/bugfix):
 
-- `analysis.ts`: investigation and confidence gate;
+- `ticket-analysis.ts`: investigation result contract;
 - `ticket.ts`: normalized Jira evidence;
 - `workflow-state.ts`: durable state and callbacks;
 - `coding/coding-harness.ts`: agent task and result contracts;
@@ -317,7 +317,7 @@ For a first pass through the code, use this order:
 1. [`src/app/server.ts`](../src/app/server.ts) — see how the application is assembled.
 2. [`src/features/bugfix/bugfix-queue.restate-service.ts`](../src/features/bugfix/bugfix-queue.restate-service.ts) — see how filter runs fan out.
 3. [`src/features/bugfix/bugfix.restate-workflow.ts`](../src/features/bugfix/bugfix.restate-workflow.ts) — follow the complete sequential lifecycle.
-4. [`src/features/bugfix/analysis.ts`](../src/features/bugfix/analysis.ts) and [`src/features/bugfix/workflow-state.ts`](../src/features/bugfix/workflow-state.ts) — understand deterministic policy and durable state.
+4. [`src/workflows/bugfix/tasks/analysis.ts`](../src/workflows/bugfix/tasks/analysis.ts), [`src/domain/ticket-analysis.ts`](../src/domain/ticket-analysis.ts), and [`src/workflows/bugfix/workflow-state.ts`](../src/workflows/bugfix/workflow-state.ts) — understand deterministic policy, the analysis contract, and durable state.
 5. [`src/features/bugfix/coding/coding-harness.ts`](../src/features/bugfix/coding/coding-harness.ts) and [`src/features/bugfix/coding/codex-coding-harness.ts`](../src/features/bugfix/coding/codex-coding-harness.ts) — understand the agent boundary.
 6. [`src/features/bugfix/workspace/local-git-workspaces.ts`](../src/features/bugfix/workspace/local-git-workspaces.ts) and [`src/integrations`](../src/integrations) — inspect execution and external-system infrastructure.
 

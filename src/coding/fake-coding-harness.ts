@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { TicketAnalysis } from "../features/bugfix/analysis.js";
+import type { TicketAnalysis } from "../domain/ticket-analysis.js";
 import type {
   AnalyzeHarnessTaskInput,
   CodingHarness,
@@ -57,7 +57,6 @@ export class FakeCodingHarness implements CodingHarness {
       rootCause: "Simulated root cause",
       changedFiles: [relative],
       validation: { commandsRun: ["fake:test"], succeeded: true, failures: [] },
-      usage: { inputTokens: 100, outputTokens: 50 },
     };
   }
 
@@ -79,7 +78,6 @@ export class FakeCodingHarness implements CodingHarness {
       summary: "Fake repair completed",
       changedFiles: [relative],
       validation: { commandsRun: ["fake:test"], succeeded: true, failures: [] },
-      usage: { inputTokens: 30, outputTokens: 20 },
     };
   }
 
@@ -102,7 +100,6 @@ export class FakeCodingHarness implements CodingHarness {
       verdict: "accept",
       summary: "Fake independent review accepted the patch",
       findings: [],
-      usage: { inputTokens: 40, outputTokens: 10 },
     };
   }
 }

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { validateJiraWebhook } from "../src/features/bugfix/ingress/jira-webhook.restate-service.js";
-import { validateJenkinsWebhook } from "../src/features/bugfix/ingress/jenkins-webhook.restate-service.js";
+import { validateJiraWebhook } from "../src/entrypoints/jira-webhook.restate-service.js";
 describe("webhook validation", () => {
   it("accepts a ready bug", () =>
     expect(
@@ -17,19 +16,6 @@ describe("webhook validation", () => {
         webhookEvent: "x",
         providerEventId: "jira-delivery-2",
         issue: { key: "ABC-1", fields: { issuetype: { name: "Task" }, status: { name: "Open" } } },
-      }),
-    ).toThrow());
-
-  it("rejects oversized Jenkins logs", () =>
-    expect(() =>
-      validateJenkinsWebhook({
-        workflowId: "x",
-        providerEventId: "jenkins-delivery-1",
-        attempt: 0,
-        buildId: "1",
-        status: "failed",
-        commitSha: "abc123",
-        log: "x".repeat(2_000_001),
       }),
     ).toThrow());
 });

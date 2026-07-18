@@ -1,15 +1,14 @@
 import { describe, expect, it } from "bun:test";
 import type { MergeRequest } from "../src/domain/merge-request.js";
-import type { BugFixWorkflowState } from "../src/features/bugfix/workflow-state.js";
+import type { BugFixWorkflowState } from "../src/workflows/bugfix/workflow-state.js";
 import {
   done,
-  emptyTokenUsage,
   failed,
   humanRequired,
   published,
   repairing,
   reviewReady,
-} from "../src/features/bugfix/workflow-state.js";
+} from "../src/workflows/bugfix/workflow-state.js";
 
 const state = (statusDetail?: string): BugFixWorkflowState => ({
   runId: "bugfix/ABC-123/1",
@@ -22,7 +21,6 @@ const state = (statusDetail?: string): BugFixWorkflowState => ({
   repairAttempt: 1,
   reviewAttempt: 2,
   maxRepairAttempts: 3,
-  tokenUsage: emptyTokenUsage(),
   ...(statusDetail === undefined ? {} : { statusDetail }),
 });
 

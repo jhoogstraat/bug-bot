@@ -1,11 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import type { RunResult, ThreadOptions, TurnOptions } from "@openai/codex-sdk";
-import type { TicketAnalysis } from "../src/features/bugfix/analysis.js";
+import type { TicketAnalysis } from "../src/domain/ticket-analysis.js";
 import type { NormalizedBugTicket } from "../src/domain/ticket.js";
-import {
-  CodexHarness,
-  type CodexClient,
-} from "../src/coding/codex-coding-harness.js";
+import { CodexHarness, type CodexClient } from "../src/coding/codex-coding-harness.js";
 
 const ticket: NormalizedBugTicket = {
   key: "ABC-1",
@@ -76,7 +73,6 @@ describe("CodexHarness", () => {
     expect(result).toMatchObject({
       sessionId: "thread-sdk-1",
       status: "completed",
-      usage: { inputTokens: 12, cachedInputTokens: 3, outputTokens: 5 },
     });
 
     expect(threadOptions).toEqual([
@@ -164,11 +160,6 @@ function completedRun(output: unknown): RunResult {
   return {
     finalResponse: JSON.stringify(output),
     items: [],
-    usage: {
-      input_tokens: 12,
-      cached_input_tokens: 3,
-      output_tokens: 5,
-      reasoning_output_tokens: 2,
-    },
+    usage: null,
   };
 }

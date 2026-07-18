@@ -1,7 +1,7 @@
 import * as restate from "@restatedev/restate-sdk";
 import { z } from "zod";
-import type { BugFixRestateWorkflow } from "../bugfix.restate-workflow.js";
-import { workflowId } from "../bugfix.restate-workflow.js";
+import type { BugFixWorkflow } from "../workflows/bugfix/workflow.js";
+import { workflowId } from "../workflows/bugfix/workflow.js";
 
 const jiraWebhookSchema = z.object({
   webhookEvent: z.string(),
@@ -31,7 +31,7 @@ export function validateJiraWebhook(value: unknown): z.infer<typeof jiraWebhookS
   return event;
 }
 
-export function createJiraWebhookIngressService(workflow: BugFixRestateWorkflow) {
+export function createJiraWebhookIngressService(workflow: typeof BugFixWorkflow) {
   return restate.service({
     name: "JiraWebhook",
     options: {
@@ -43,10 +43,8 @@ export function createJiraWebhookIngressService(workflow: BugFixRestateWorkflow)
     handlers: {
       receive: async (ctx: restate.Context, raw: unknown) => {
         const event = validateJiraWebhook(raw);
-        const id = workflowId(event.issue.key, event.generation);
-        ctx
-          .workflowSendClient(workflow, id)
-          .run({ issueKey: event.issue.key, generation: event.generation });
+        const id = workflowId(event.issue.key);
+        ctx.workflowSendClient(workflow, id).run(event.issue.key);
 
         return { accepted: true, workflowId: id };
       },

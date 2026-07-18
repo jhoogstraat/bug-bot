@@ -1,6 +1,6 @@
 # Ticket Bot
 
-Ticket Bot is an initial vertical slice of a durable, token-efficient bug-resolution platform. Jira, GitLab, Jenkins, SonarQube, retry policy, state, and context reduction are ordinary TypeScript. Codex is used only for repository investigation, editing, repair, and independent review.
+Ticket Bot is an initial vertical slice of a durable bug-resolution platform. Jira, GitLab, Jenkins, SonarQube, retry policy, state, and context reduction are ordinary TypeScript. Codex is used only for repository investigation, editing, repair, and independent review.
 
 The default configuration uses fake Jira, GitLab, and Codex adapters while exercising a real isolated Git workspace. The same workflow can select the Codex SDK with `HARNESS_MODE=codex` and HTTP Jira/GitLab adapters with `ADAPTER_MODE=real`.
 
@@ -18,7 +18,6 @@ The default configuration uses fake Jira, GitLab, and Codex adapters while exerc
 - Changed-file/new-code Sonar filtering and callback.
 - Fresh adversarial review with revise/re-run cycles and Jira Ready-to-merge handoff; no automatic merge.
 - Narrow MCP tools for optional progressive context.
-- Structured token accounting and telemetry extension points.
 
 ## Quick start
 
