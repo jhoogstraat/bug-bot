@@ -2,37 +2,54 @@
   <img src="docs/assets/ticket-bot-icon.png" alt="Ticket Bot icon" width="180">
 </p>
 
-# Ticket Bot
+<h1 align="center">Ticket Bot</h1>
 
-Ticket Bot is an initial vertical slice of a durable bug-resolution platform. Jira, GitLab, Jenkins, SonarQube, retry policy, state, and context reduction are ordinary TypeScript. Codex is used only for repository investigation, editing, repair, and independent review.
+<p align="center">
+  <strong>From Jira bug to reviewed draft merge request—durably, safely, and without babysitting.</strong>
+</p>
 
-The default configuration uses fake Jira, GitLab, and Codex adapters while exercising a real isolated Git workspace. The same workflow can select the Codex SDK with `HARNESS_MODE=codex` and HTTP Jira/GitLab adapters with `ADAPTER_MODE=real`.
+## What
 
-## What works
+Ticket Bot is a durable bug-resolution pipeline. It picks up Jira tickets, investigates the problem, implements a focused fix in an isolated workspace, validates the result, runs an independent review, and opens a draft merge request.
 
-- Restate workflow identity and durable state per ticket generation.
-- The Restate SDK owns the HTTP/2 service endpoint, including bidirectional protocol support.
-- Paginated, deduplicated, fixed Jira-filter queues with independent per-ticket dispatch.
-- Normalized, bounded Jira context.
-- Read-only structured investigation and deterministic High/High confidence gate before Jira or code mutation.
-- Per-ticket clone and branch with path containment checks.
-- Provider-neutral coding harness with fake and official Codex SDK implementations.
-- Focused-diff validation, commit, push, and draft merge request creation.
-- Jenkins callback compaction, fingerprinting, classification, and bounded repair loop.
-- Changed-file/new-code Sonar filtering and callback.
-- Fresh adversarial review with revise/re-run cycles and Jira Ready-to-merge handoff; no automatic merge.
-- Narrow MCP tools for optional progressive context.
+It automates the repetitive path to **ready for review**. The final merge always stays with a human.
+
+## Why
+
+Writing code is only one part of fixing a production bug. The hard part is making the entire process reliable: retries, crashes, stale callbacks, incomplete tickets, scope creep, failed validation, and unsafe handoffs.
+
+Ticket Bot wraps the coding agent in deterministic TypeScript and durable Restate orchestration. Completed work survives restarts, side effects stay bounded, and uncertain fixes stop before they can mutate Jira or the repository.
+
+## How
+
+```text
+Jira → investigate → confidence gate → isolated branch → implement
+     → validate → independent review → draft MR → human merge
+```
+
+- **Restate** owns durable execution, retries, and workflow identity.
+- **Codex** is a bounded worker for investigation, implementation, repair, and review.
+- **TypeScript** owns policy, validation, integrations, and every irreversible decision.
+- **Jira, GitLab, Jenkins, and SonarQube** remain replaceable adapters around the workflow.
+
+No automatic merge. No credentials handed to the coding agent. No forcing low-confidence fixes through the pipeline.
 
 ## Quick start
 
 ```bash
 bun install
-bun run format
 bun run check
 docker compose up -d restate
 bun run dev
 ```
 
-Register the endpoint and invoke the fake flow using the commands in [local development](docs/local-development.md). The repository must have an initial commit because each run starts from an isolated Git clone.
+The default setup uses fake Jira, GitLab, and Codex adapters while exercising a real isolated Git workspace. Follow [local development](docs/local-development.md) to register the Restate endpoint and run the complete fake flow.
 
-For a guided first read, start with the [reading guide](docs/reading-guide.md). See also the [architecture](docs/architecture.md), [code tour](docs/code-tour.md), and [implementation plan](docs/implementation-plan.md).
+Use `HARNESS_MODE=codex` for the Codex SDK and `ADAPTER_MODE=real` for HTTP Jira and GitLab adapters.
+
+## Go deeper
+
+- [Architecture](docs/architecture.md)
+- [Code tour](docs/code-tour.md)
+- [Reading guide](docs/reading-guide.md)
+- [Implementation plan](docs/implementation-plan.md)
