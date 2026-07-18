@@ -4,18 +4,17 @@ import {
   applyConfidenceGate,
   type ConfidenceGateDecision,
   type TicketAnalysis,
-} from "../../../domain/analysis.js";
-import type { CompactCiFailure, SonarFinding } from "../../../domain/ci.js";
-import { DomainError, type DomainErrorCode } from "../../../domain/errors.js";
+} from "./analysis.js";
+import type { CompactCiFailure, SonarFinding } from "./ci.js";
 import type {
   CodingHarness,
   HarnessReviewResult,
   HarnessRunResult,
-} from "../../../domain/harness.js";
-import { usedTokens } from "../../../domain/harness.js";
-import type { MergeRequest } from "../../../domain/merge-request.js";
-import type { RepositoryConfig } from "../../../domain/repository.js";
-import type { NormalizedBugTicket } from "../../../domain/ticket.js";
+} from "./coding/coding-harness.js";
+import { usedTokens } from "./coding/coding-harness.js";
+import type { MergeRequest } from "./merge-request.js";
+import type { RepositoryConfig } from "./repository.js";
+import type { NormalizedBugTicket } from "./ticket.js";
 import {
   addTokenUsage,
   done,
@@ -30,14 +29,12 @@ import {
   type MergeRequestReviewCallback,
   type SonarCallback,
   type StartBugFixInput,
-} from "../../../domain/workflow.js";
-import type { GitLabClient } from "../../../integrations/gitlab/gitlab-client.js";
-import type { JiraClient } from "../../../integrations/jira/jira-client.js";
-import { normalizeJiraIssue } from "../../../integrations/jira/jira-normalizer.js";
-import type { ExecutionRunner, Workspace } from "../../../runner/execution-runner.js";
-import { WorkspaceManager, type WorkspaceInspection } from "../../../runner/workspace-manager.js";
-
-const domainCodeMetadataKey = "ticket-bot.domain-code";
+} from "./workflow-state.js";
+import type { GitLabClient } from "../../integrations/gitlab/gitlab-client.js";
+import type { JiraClient } from "../../integrations/jira/jira-client.js";
+import { normalizeJiraIssue } from "../../integrations/jira/jira-normalizer.js";
+import type { RepositoryWorkspace, WorkspaceChanges } from "./workspace/local-git-workspaces.js";
+import { LocalGitWorkspaces } from "./workspace/local-git-workspaces.js";
 
 interface WorkflowStateStore {
   workflowState?: BugFixWorkflowState;
@@ -50,9 +47,8 @@ type CallbackKind = "jenkins" | "sonarqube" | "gitlab-review";
 export interface BugFixWorkflowDependencies {
   jira: JiraClient;
   gitlab: GitLabClient;
-  harness: CodingHarness;
-  runner: ExecutionRunner;
-  workspaces: WorkspaceManager;
+  codingHarness: CodingHarness;
+  workspaces: LocalGitWorkspaces;
   resolveRepository(ticket: NormalizedBugTicket): RepositoryConfig;
   actionableRepositoryId: string;
 }
@@ -69,13 +65,6 @@ export function createBugFixRestateWorkflow(
     options: {
       ingressPrivate: true,
       inactivityTimeout: inactivityTimeoutMinutes * 60_000,
-      asTerminalError: (error) =>
-        error instanceof DomainError
-          ? new restate.TerminalError(error.message, {
-              errorCode: 422,
-              metadata: { [domainCodeMetadataKey]: error.code },
-            })
-          : undefined,
     },
     handlers: {
       run: restate.handlers.workflow.workflow(
@@ -95,7 +84,7 @@ export function createBugFixRestateWorkflow(
               const investigationWorkspace = await ctx.run(
                 "create-workspace",
                 () =>
-                  dependencies.runner.createWorkspace({
+                  dependencies.workspaces.create({
                     workflowId: runId,
                     issueKey: ticket.key,
                     shortSlug: ticket.summary,
@@ -133,7 +122,7 @@ export function createBugFixRestateWorkflow(
 
               const workspace = await ctx.run(
                 "activate-focused-branch",
-                () => dependencies.runner.activateWorkspace(investigationWorkspace),
+                () => dependencies.workspaces.activateBranch(investigationWorkspace),
                 { maxRetryAttempts: 2 },
               );
 
@@ -199,7 +188,7 @@ export function createBugFixRestateWorkflow(
 
               await ctx.run(
                 "push-branch",
-                () => dependencies.workspaces.push(workspaceFromState(reviewState)),
+                () => dependencies.workspaces.pushBranch(workspaceFromState(reviewState)),
                 { maxRetryAttempts: 3 },
               );
 
@@ -281,7 +270,7 @@ export function createBugFixRestateWorkflow(
               const stateToPush = state;
               await ctx.run(
                 `push-repair-${attempt}`,
-                () => dependencies.workspaces.push(workspaceFromState(stateToPush)),
+                () => dependencies.workspaces.pushBranch(workspaceFromState(stateToPush)),
                 { maxRetryAttempts: 3 },
               );
             }
@@ -376,14 +365,11 @@ export function createBugFixRestateWorkflow(
             return workflowResult(runId, state);
           } catch (error) {
             if (error instanceof restate.CancelledError) throw error;
-            if (!(error instanceof restate.TerminalError) && !(error instanceof DomainError))
-              throw error;
+            if (!(error instanceof restate.TerminalError)) throw error;
 
             const detail = error instanceof Error ? error.message : String(error);
             const failed =
-              state ??
-              (await ctx.get("workflowState")) ??
-              createFailureState(runId, input, error, detail);
+              state ?? (await ctx.get("workflowState")) ?? createFailureState(runId, input, detail);
 
             const nextState: BugFixWorkflowState = {
               ...failed,
@@ -436,9 +422,9 @@ async function investigateTicket(
   dependencies: BugFixWorkflowDependencies,
   ticket: NormalizedBugTicket,
   repository: RepositoryConfig,
-  workspace: Workspace,
+  workspace: RepositoryWorkspace,
 ): Promise<{ analysis: TicketAnalysis; gate: ConfidenceGateDecision }> {
-  const analysis = await dependencies.runner.analyzeHarness(dependencies.harness, {
+  const analysis = await dependencies.codingHarness.analyzeTask({
     ticket,
     workspacePath: workspace.path,
     repositoryId: repository.id,
@@ -454,15 +440,12 @@ async function investigateTicket(
   });
 
   if (analysis.issueKey !== ticket.key)
-    throw new DomainError(
-      "HARNESS_BLOCKED",
-      `Analysis returned ${analysis.issueKey} for ${ticket.key}`,
-    );
+    throw new restate.TerminalError(`Analysis returned ${analysis.issueKey} for ${ticket.key}`);
 
   const gate = applyConfidenceGate(analysis, repository.id, dependencies.actionableRepositoryId);
-  await dependencies.workspaces.writeArtifact(
+  await dependencies.workspaces.writeInvestigationReport(
     workspace,
-    `ticket-analysis/${ticket.key}/ANALYSIS.md`,
+    ticket.key,
     analysisMarkdown(ticket, analysis, gate),
   );
 
@@ -473,43 +456,42 @@ async function startHarness(
   dependencies: BugFixWorkflowDependencies,
   ticket: NormalizedBugTicket,
   repository: RepositoryConfig,
-  workspace: Workspace,
+  workspace: RepositoryWorkspace,
   analysis: TicketAnalysis,
 ): Promise<HarnessRunResult> {
-  const execution = await dependencies.runner.executeHarness({
-    kind: "start",
-    harness: dependencies.harness,
-    task: {
-      ticket,
-      approvedAnalysis: analysis,
-      workspacePath: workspace.path,
-      repositoryInstructions: {
-        buildCommands: repository.buildCommands,
-        testCommands: repository.testCommands,
-        lintCommands: repository.lintCommands,
-      },
-      limits: {
-        maxAgentTurns: repository.limits.maxAgentTurns,
-        maxChangedFiles: repository.limits.maxChangedFiles,
-        maxExecutionMinutes: repository.limits.maxExecutionMinutes,
-      },
+  const result = await dependencies.codingHarness.startTask({
+    ticket,
+    approvedAnalysis: analysis,
+    workspacePath: workspace.path,
+    repositoryInstructions: {
+      buildCommands: repository.buildCommands,
+      testCommands: repository.testCommands,
+      lintCommands: repository.lintCommands,
+    },
+    limits: {
+      maxAgentTurns: repository.limits.maxAgentTurns,
+      maxChangedFiles: repository.limits.maxChangedFiles,
+      maxExecutionMinutes: repository.limits.maxExecutionMinutes,
     },
   });
 
-  validateHarnessResult(execution.result);
-  return execution.result;
+  validateHarnessResult(result);
+  return result;
 }
 
 async function validateAndCommit(
   dependencies: BugFixWorkflowDependencies,
-  workspace: Workspace,
+  workspace: RepositoryWorkspace,
   ticket: NormalizedBugTicket,
   repository: RepositoryConfig,
   result: HarnessRunResult,
 ): Promise<string> {
   validateHarnessResult(result);
-  validatePatch(await dependencies.workspaces.inspect(workspace), repository);
-  return await dependencies.workspaces.commit(workspace, `fix(${ticket.key}): ${ticket.summary}`);
+  validatePatch(await dependencies.workspaces.inspectPendingChanges(workspace), repository);
+  return await dependencies.workspaces.commitChanges(
+    workspace,
+    `fix(${ticket.key}): ${ticket.summary}`,
+  );
 }
 
 async function createMergeRequest(
@@ -540,11 +522,11 @@ async function reviewPatch(
   sonarFindings: SonarFinding[],
 ): Promise<HarnessReviewResult & { state: BugFixWorkflowState }> {
   const workspace = workspaceFromState(state);
-  const inspection = await dependencies.workspaces.inspectFromBase(workspace);
+  const inspection = await dependencies.workspaces.inspectChangesSinceBase(workspace);
   if (!state.analysis)
-    throw new DomainError("HARNESS_BLOCKED", "Independent review requires the approved analysis");
+    throw new restate.TerminalError("Independent review requires the approved analysis");
 
-  const review = await dependencies.harness.review({
+  const review = await dependencies.codingHarness.review({
     ticket,
     analysis: state.analysis,
     workspacePath: workspace.path,
@@ -574,41 +556,29 @@ async function revisePatch(
   const workspace = workspaceFromState(state);
   const sessionId = state.harness?.sessionId;
   if (!sessionId)
-    throw new DomainError(
-      "HARNESS_BLOCKED",
+    throw new restate.TerminalError(
       "Review feedback cannot be addressed without the implementer session",
     );
 
   if (state.reviewAttempt >= state.maxRepairAttempts)
-    throw new DomainError("REPAIR_LIMIT_REACHED", "Review revision limit reached");
+    throw new restate.TerminalError("Review revision limit reached");
 
-  const before = await dependencies.workspaces.inspectFromBase(workspace);
-  const execution = await dependencies.runner.executeHarness({
-    kind: "revise",
-    harness: dependencies.harness,
-    sessionId,
-    task: {
-      workspacePath: workspace.path,
-      ticketSummary: ticketSummary(ticket),
-      diffSummary: before.diffSummary,
-      review,
-    },
+  const before = await dependencies.workspaces.inspectChangesSinceBase(workspace);
+  const result = await dependencies.codingHarness.reviseTask(sessionId, {
+    workspacePath: workspace.path,
+    ticketSummary: ticketSummary(ticket),
+    diffSummary: before.diffSummary,
+    review,
   });
 
-  const commitSha = await validateAndCommitRepair(
-    dependencies,
-    state,
-    ticket,
-    repository,
-    execution.result,
-  );
+  const commitSha = await validateAndCommitRepair(dependencies, state, ticket, repository, result);
 
   return {
     ...state,
     state: "REVIEWING",
     reviewAttempt: state.reviewAttempt + 1,
     currentCommitSha: commitSha,
-    tokenUsage: addTokenUsage(state.tokenUsage, "repairs", usedTokens(execution.result.usage)),
+    tokenUsage: addTokenUsage(state.tokenUsage, "repairs", usedTokens(result.usage)),
     statusDetail: "Review findings addressed; awaiting a fresh independent review",
   };
 }
@@ -622,24 +592,19 @@ async function continueHarness(
   const workspace = workspaceFromState(state);
   const sessionId = state.harness?.sessionId;
   if (!sessionId || !state.currentCommitSha)
-    throw new DomainError("HARNESS_BLOCKED", "Cannot resume without a session and commit");
+    throw new restate.TerminalError("Cannot resume without a session and commit");
 
-  const before = await dependencies.workspaces.inspectFromBase(workspace);
-  const execution = await dependencies.runner.executeHarness({
-    kind: "continue",
-    harness: dependencies.harness,
-    sessionId,
-    task: {
-      workspacePath: workspace.path,
-      ticketSummary: ticketSummary(ticket),
-      currentCommitSha: state.currentCommitSha,
-      diffSummary: before.diffSummary,
-      failure,
-    },
+  const before = await dependencies.workspaces.inspectChangesSinceBase(workspace);
+  const result = await dependencies.codingHarness.continueTask(sessionId, {
+    workspacePath: workspace.path,
+    ticketSummary: ticketSummary(ticket),
+    currentCommitSha: state.currentCommitSha,
+    diffSummary: before.diffSummary,
+    failure,
   });
 
-  validateHarnessResult(execution.result);
-  return execution.result;
+  validateHarnessResult(result);
+  return result;
 }
 
 async function validateAndCommitRepair(
@@ -651,8 +616,11 @@ async function validateAndCommitRepair(
 ): Promise<string> {
   const workspace = workspaceFromState(state);
   validateHarnessResult(result);
-  validatePatch(await dependencies.workspaces.inspect(workspace), repository);
-  return await dependencies.workspaces.commit(workspace, `fix(${ticket.key}): repair CI failure`);
+  validatePatch(await dependencies.workspaces.inspectPendingChanges(workspace), repository);
+  return await dependencies.workspaces.commitChanges(
+    workspace,
+    `fix(${ticket.key}): repair CI failure`,
+  );
 }
 
 async function linkMergeRequestInJira(
@@ -660,7 +628,7 @@ async function linkMergeRequestInJira(
   state: BugFixWorkflowState,
 ): Promise<void> {
   if (!state.mergeRequest)
-    throw new DomainError("VALIDATION_FAILURE", "Only an accepted review can be handed off");
+    throw new restate.TerminalError("Only an accepted review can be handed off");
 
   await dependencies.jira.ensureMergeRequestLink(state.issueKey, state.mergeRequest.url);
 }
@@ -670,7 +638,7 @@ async function markJiraReadyToMerge(
   state: BugFixWorkflowState,
 ): Promise<void> {
   if (!state.mergeRequest)
-    throw new DomainError("VALIDATION_FAILURE", "Only an accepted review can be handed off");
+    throw new restate.TerminalError("Only an accepted review can be handed off");
 
   await dependencies.jira.ensureReadyToMerge(state.issueKey);
 }
@@ -680,7 +648,7 @@ function initialState(
   generation: number,
   ticket: NormalizedBugTicket,
   repository: RepositoryConfig,
-  workspace: Workspace,
+  workspace: RepositoryWorkspace,
   analysis: TicketAnalysis,
 ): BugFixWorkflowState {
   return {
@@ -694,7 +662,7 @@ function initialState(
     },
     branchName: workspace.branchName,
     baseCommitSha: workspace.baseCommitSha,
-    harness: { provider: "codex", workspaceId: workspace.id },
+    harness: { provider: "codex", workspacePath: workspace.path },
     analysis,
     state: "REVIEWING",
     repairAttempt: 0,
@@ -709,7 +677,7 @@ function implementationState(
   generation: number,
   ticket: NormalizedBugTicket,
   repository: RepositoryConfig,
-  workspace: Workspace,
+  workspace: RepositoryWorkspace,
   analysis: TicketAnalysis,
   result: HarnessRunResult,
   commitSha: string,
@@ -717,7 +685,7 @@ function implementationState(
   return {
     ...initialState(runId, generation, ticket, repository, workspace, analysis),
     currentCommitSha: commitSha,
-    harness: { provider: "codex", sessionId: result.sessionId, workspaceId: workspace.id },
+    harness: { provider: "codex", sessionId: result.sessionId, workspacePath: workspace.path },
     tokenUsage: addTokenUsage(emptyTokenUsage(), "initialRun", usedTokens(result.usage)),
   };
 }
@@ -741,20 +709,19 @@ function repairState(
 
 function validateHarnessResult(result: HarnessRunResult): void {
   if (result.status === "human_input_required")
-    throw new DomainError("HUMAN_INPUT_REQUIRED", result.humanInputRequest ?? result.summary);
+    throw new restate.TerminalError(result.humanInputRequest ?? result.summary);
 
-  if (result.status !== "completed") throw new DomainError("HARNESS_BLOCKED", result.summary);
+  if (result.status !== "completed") throw new restate.TerminalError(result.summary);
   if (!result.validation.succeeded)
-    throw new DomainError("VALIDATION_FAILURE", result.validation.failures.join("; "));
+    throw new restate.TerminalError(result.validation.failures.join("; "));
 }
 
-function validatePatch(inspection: WorkspaceInspection, repository: RepositoryConfig): void {
+function validatePatch(inspection: WorkspaceChanges, repository: RepositoryConfig): void {
   if (inspection.changedFiles.length === 0)
-    throw new DomainError("NO_CODE_CHANGES", "Harness completed without changing files");
+    throw new restate.TerminalError("Harness completed without changing files");
 
   if (inspection.changedFiles.length > repository.limits.maxChangedFiles)
-    throw new DomainError(
-      "VALIDATION_FAILURE",
+    throw new restate.TerminalError(
       `Patch changed ${inspection.changedFiles.length} files; limit is ${repository.limits.maxChangedFiles}`,
     );
 }
@@ -768,12 +735,12 @@ function ticketSummary(ticket: NormalizedBugTicket) {
   };
 }
 
-function workspaceFromState(state: BugFixWorkflowState): Workspace {
-  const path = state.harness?.workspaceId;
+function workspaceFromState(state: BugFixWorkflowState): RepositoryWorkspace {
+  const path = state.harness?.workspacePath;
   if (!path || !state.branchName || !state.baseCommitSha)
-    throw new DomainError("WORKSPACE_FAILURE", "Workflow does not contain a recoverable workspace");
+    throw new restate.TerminalError("Workflow does not contain a recoverable workspace");
 
-  return { id: path, path, branchName: state.branchName, baseCommitSha: state.baseCommitSha };
+  return { path, branchName: state.branchName, baseCommitSha: state.baseCommitSha };
 }
 
 function mergeRequestDescription(ticket: NormalizedBugTicket, result: HarnessRunResult): string {
@@ -829,30 +796,14 @@ function workflowResult(runId: string, state: BugFixWorkflowState) {
 function createFailureState(
   runId: string,
   input: StartBugFixInput,
-  error: unknown,
   detail: string,
 ): BugFixWorkflowState {
-  const humanRequiredCodes: DomainErrorCode[] = [
-    "HUMAN_INPUT_REQUIRED",
-    "HARNESS_BLOCKED",
-    "REPAIR_LIMIT_REACHED",
-    "REPEATED_FAILURE",
-    "CI_INFRASTRUCTURE_FAILURE",
-  ];
-
-  const code =
-    error instanceof DomainError
-      ? error.code
-      : error instanceof restate.TerminalError
-        ? (error.metadata?.[domainCodeMetadataKey] as DomainErrorCode | undefined)
-        : undefined;
-
   return {
     runId,
     issueKey: input.issueKey,
     generation: input.generation,
     repository: { id: "unresolved", cloneUrl: "", defaultBranch: "" },
-    state: code && humanRequiredCodes.includes(code) ? "HUMAN_REQUIRED" : "FAILED",
+    state: "FAILED",
     repairAttempt: 0,
     reviewAttempt: 0,
     maxRepairAttempts: 0,

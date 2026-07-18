@@ -1,8 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import type { CompactCiFailure } from "../src/domain/ci.js";
-import type { BugFixWorkflowState } from "../src/domain/workflow.js";
-import { emptyTokenUsage } from "../src/domain/workflow.js";
-import { decideRepair } from "../src/restate/workflows/bugfix/definition.js";
+import type { CompactCiFailure } from "../src/features/bugfix/ci.js";
+import {
+  emptyTokenUsage,
+  type BugFixWorkflowState,
+} from "../src/features/bugfix/workflow-state.js";
+import { decideRepair } from "../src/features/bugfix/bugfix.restate-workflow.js";
 
 const state: BugFixWorkflowState = {
   runId: "r",

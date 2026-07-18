@@ -1,6 +1,5 @@
-import { DomainError } from "../domain/errors.js";
-import type { RepositoryConfig } from "../domain/repository.js";
-import type { NormalizedBugTicket } from "../domain/ticket.js";
+import type { RepositoryConfig } from "../features/bugfix/repository.js";
+import type { NormalizedBugTicket } from "../features/bugfix/ticket.js";
 
 export const repositoryConfigs: RepositoryConfig[] = [
   {
@@ -35,11 +34,7 @@ export function resolveRepository(
       config.jiraComponents.some((value) => value.toLowerCase() === component),
   );
 
-  if (!match)
-    throw new DomainError(
-      "MISSING_REPOSITORY_MAPPING",
-      `No repository is configured for ${ticket.key}`,
-    );
+  if (!match) throw new Error(`No repository is configured for ${ticket.key}`);
 
   return match;
 }

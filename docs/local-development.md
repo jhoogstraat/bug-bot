@@ -71,7 +71,7 @@ To simulate code-related failure, send `status: failed` with a bounded `log`; th
 
 ## Real Codex mode
 
-Set `HARNESS_MODE=codex` and configure Codex authentication before starting the app. You may retain fake Jira/GitLab adapters while testing Codex. The adapter uses `@openai/codex-sdk` to create and resume structured-output threads in the allocated workspace. It disables web search, uses read-only or workspace-write access by task, and never approves commands automatically. Use disposable credentials and an isolated execution host; the local runner is a development backend, not a production security boundary.
+Set `HARNESS_MODE=codex` and configure Codex authentication before starting the app. You may retain fake Jira/GitLab adapters while testing Codex. The adapter uses `@openai/codex-sdk` to create and resume structured-output threads in the allocated workspace. It disables web search, uses read-only or workspace-write access by task, and never approves commands automatically. Use disposable credentials and an isolated execution host; local Git workspaces and the local Codex adapter are development backends, not production security boundaries.
 
 Run the optional MCP adapter with `bun run mcp`. Its standalone provider intentionally returns empty data; production wiring should inject internal compact-context services.
 

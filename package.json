@@ -9,11 +9,11 @@
   },
   "scripts": {
     "build": "bun x --bun tsc -p tsconfig.json",
-    "dev": "bun --watch src/server.ts",
+    "dev": "bun --watch src/app/server.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "mcp": "bun src/mcp/engineering-context-server.ts",
-    "start": "bun dist/src/server.js",
+    "start": "bun dist/src/app/server.js",
     "test": "bun test ./test/*.test.ts",
     "test:restate": "RUN_RESTATE_TESTS=1 bun test ./test/restate-replay.integration.test.ts",
     "test:restate:apple": "RESTATE_CONTAINER_RUNTIME=apple RUN_RESTATE_TESTS=1 bun test ./test/restate-replay.integration.test.ts",

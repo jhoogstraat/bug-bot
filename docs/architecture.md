@@ -39,7 +39,7 @@ Restate ingress is an internal network dependency of that API and must not be ex
 | 1. Load queue      | `BugFixQueue`                                                 | Jira pagination reaches its last page; keys are deduplicated into one immutable captured result before any workflow is dispatched.                                                                                                                                                                                        |
 | 2. Investigate     | `CodingHarness.analyzeTask`                                   | One read-only, schema-constrained analysis exists per key with Jira, repository, reproduction, scope, complexity, missing information, and confidence. Workflows are dispatched independently, so one blocked ticket cannot stop another.                                                                                 |
 | 3. Confidence gate | `applyConfidenceGate`                                         | Both confidences are High, files and observable verification are identified, no information is missing, and the resolved repository equals `ACTIONABLE_REPOSITORY_ID` (default `invoicing-outbound`). Otherwise the analysis records the exact human request and no Jira/code mutation occurs.                            |
-| 4. Claim           | `JiraClient.claimIssue` and `WorkspaceManager`                | The ticket is assigned to the authenticated Jira user, transitioned to In Progress, and has a unique `agent/<KEY>/<short-slug>` workspace.                                                                                                                                                                                |
+| 4. Claim           | `JiraClient.claimIssue` and `LocalGitWorkspaces`              | The ticket is assigned to the authenticated Jira user, transitioned to In Progress, and has a unique `agent/<KEY>/<short-slug>` workspace.                                                                                                                                                                                |
 | 5. Implement       | `BugFixWorkflow` and implementer harness                      | The approved analysis is supplied as a contract; only a bounded focused diff is accepted; validation succeeds; commit and push complete. Invalidated analysis stops rather than being forced through.                                                                                                                     |
 | 6. Review          | fresh read-only `CodingHarness.review`                        | Before publication, the reviewer sees ticket evidence, analysis, complete base diff, and local verification. `Revise` returns findings to the implementer and requires another fresh review; `Re-investigate` stops.                                                                                                      |
 | 7. MR              | `GitLabClient.createDraftMergeRequest`                        | Focused draft MR targets the configured default branch, is assigned to the current user, carries `LHIND`, and has What/Why/How/Verification/Scope plus `Fixes <KEY>`.                                                                                                                                                     |
@@ -54,7 +54,7 @@ sequenceDiagram
     participant Queue as BugFixQueue
     participant Jira
     participant WF as Per-ticket Restate workflow
-    participant Runner
+    participant Workspace as Local Git workspaces
     participant Codex
     participant GitLab
     participant Jenkins
@@ -66,8 +66,8 @@ sequenceDiagram
     loop every captured key, independently
         Queue--)WF: start ticket generation
         WF->>Jira: fetch bounded evidence and history
-        WF->>Runner: isolated repository snapshot
-        Runner->>Codex: read-only investigation
+        WF->>Workspace: isolated repository snapshot
+        WF->>Codex: read-only investigation
         Codex-->>WF: structured analysis
         WF->>WF: deterministic confidence/scope gate
         alt blocked
@@ -99,8 +99,8 @@ The analysis is also stored in durable workflow state so the implementer and fre
 
 ## Isolation, security, and durability
 
-`ExecutionRunner` separates orchestration from execution. Each ticket uses a deterministic unique clone path and focused branch, preserving unrelated work. Paths are containment-checked; commands use argument arrays; time, output, changed-file, repair, and token context are bounded. The Codex child has workspace-only or read-only access as appropriate and has Jira/GitLab credentials removed.
+The bugfix workflow directly coordinates its coding harness and `LocalGitWorkspaces`, the two real execution boundaries. Each ticket uses a deterministic unique clone path and focused branch, preserving unrelated work. Paths are containment-checked; commands use argument arrays; time, output, changed-file, repair, and token context are bounded. The Codex child has workspace-only or read-only access as appropriate and has Jira/GitLab credentials removed.
 
-Restate journals queue capture and each external side effect. Workflow identity is `bugfix/<ISSUE-KEY>/<generation>`. Jenkins callbacks for older SHAs are ignored; every repair or review revision advances the callback cycle. Production runners should use one Kubernetes Job/Pod per ticket with ephemeral storage, resource/network policy, and short-lived credentials behind the unchanged runner interface.
+Restate journals queue capture and each external side effect. Workflow identity is `bugfix/<ISSUE-KEY>/<generation>`. Jenkins callbacks for older SHAs are ignored; every repair or review revision advances the callback cycle. A future Kubernetes executor must own both the workspace and coding runtime behind a new feature-local boundary; it must not recreate the deleted forwarding runner.
 
 Authentication is an adapter concern. HTTP adapters use the authenticated service identity; an interactive Microsoft Entra deployment must translate an expired/missing session into a human-authentication request and resume the journaled operation after login. Product code must never be changed to conceal authentication or infrastructure failures.

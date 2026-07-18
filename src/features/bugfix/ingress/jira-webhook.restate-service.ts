@@ -1,7 +1,7 @@
 import * as restate from "@restatedev/restate-sdk";
 import { z } from "zod";
-import type { BugFixRestateWorkflow } from "../workflows/bugfix/definition.js";
-import { workflowId } from "../workflows/bugfix/definition.js";
+import type { BugFixRestateWorkflow } from "../bugfix.restate-workflow.js";
+import { workflowId } from "../bugfix.restate-workflow.js";
 
 const jiraWebhookSchema = z.object({
   webhookEvent: z.string(),

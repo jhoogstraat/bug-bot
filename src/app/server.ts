@@ -1,20 +1,19 @@
 import * as restate from "@restatedev/restate-sdk";
-import { startWebhookApi } from "./api/webhook-api.js";
-import { loadEnvironment } from "./config/environment.js";
-import { repositoryConfigs, resolveRepository } from "./config/repositories.js";
-import { CodexHarness } from "./harness/codex-harness.js";
-import { FakeCodingHarness } from "./harness/fake-coding-harness.js";
-import { FakeGitLabClient, HttpGitLabClient } from "./integrations/gitlab/gitlab-client.js";
-import { FakeJiraClient, HttpJiraClient } from "./integrations/jira/jira-client.js";
-import type { JiraIssueDto } from "./integrations/jira/jira-types.js";
-import { LocalRunner } from "./runner/local-runner.js";
-import { WorkspaceManager } from "./runner/workspace-manager.js";
-import { createBugFixQueueRestateService } from "./restate/services/bugfix-queue.js";
-import { createGitLabWebhookIngressService } from "./restate/webhooks/gitlab-webhook.js";
-import { createJenkinsWebhookIngressService } from "./restate/webhooks/jenkins-webhook.js";
-import { createJiraWebhookIngressService } from "./restate/webhooks/jira-webhook.js";
-import { createSonarQubeWebhookIngressService } from "./restate/webhooks/sonarqube-webhook.js";
-import { createBugFixRestateWorkflow } from "./restate/workflows/bugfix/definition.js";
+import { startWebhookApi } from "./webhook-api.js";
+import { loadEnvironment } from "./environment.js";
+import { repositoryConfigs, resolveRepository } from "./repository-configs.js";
+import { createBugFixQueueRestateService } from "../features/bugfix/bugfix-queue.restate-service.js";
+import { createBugFixRestateWorkflow } from "../features/bugfix/bugfix.restate-workflow.js";
+import { CodexHarness } from "../features/bugfix/coding/codex-coding-harness.js";
+import { FakeCodingHarness } from "../features/bugfix/coding/fake-coding-harness.js";
+import { createGitLabWebhookIngressService } from "../features/bugfix/ingress/gitlab-webhook.restate-service.js";
+import { createJenkinsWebhookIngressService } from "../features/bugfix/ingress/jenkins-webhook.restate-service.js";
+import { createJiraWebhookIngressService } from "../features/bugfix/ingress/jira-webhook.restate-service.js";
+import { createSonarQubeWebhookIngressService } from "../features/bugfix/ingress/sonarqube-webhook.restate-service.js";
+import { LocalGitWorkspaces } from "../features/bugfix/workspace/local-git-workspaces.js";
+import { FakeGitLabClient, HttpGitLabClient } from "../integrations/gitlab/gitlab-client.js";
+import { FakeJiraClient, HttpJiraClient } from "../integrations/jira/jira-client.js";
+import type { JiraIssueDto } from "../integrations/jira/jira-types.js";
 
 const env = loadEnvironment();
 const fakeIssue: JiraIssueDto = {
@@ -58,15 +57,13 @@ const harness =
     ? new CodexHarness(env.CODEX_TIMEOUT_MINUTES)
     : new FakeCodingHarness();
 
-const workspaceManager = new WorkspaceManager(env.WORKSPACE_ROOT, env.KEEP_WORKSPACES);
-const runner = new LocalRunner(workspaceManager);
+const workspaces = new LocalGitWorkspaces(env.WORKSPACE_ROOT);
 const workflow = createBugFixRestateWorkflow(
   {
     jira,
     gitlab,
-    harness,
-    runner,
-    workspaces: workspaceManager,
+    codingHarness: harness,
+    workspaces,
     resolveRepository: (ticket) => resolveRepository(ticket, repositoryConfigs),
     actionableRepositoryId: env.ACTIONABLE_REPOSITORY_ID,
   },

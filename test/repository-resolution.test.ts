@@ -1,8 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { resolveRepository } from "../src/config/repositories.js";
-import { DomainError } from "../src/domain/errors.js";
-import type { RepositoryConfig } from "../src/domain/repository.js";
-import type { NormalizedBugTicket } from "../src/domain/ticket.js";
+import { resolveRepository } from "../src/app/repository-configs.js";
+import type { RepositoryConfig } from "../src/features/bugfix/repository.js";
+import type { NormalizedBugTicket } from "../src/features/bugfix/ticket.js";
 
 const config: RepositoryConfig = {
   id: "checkout",
@@ -36,5 +35,5 @@ describe("resolveRepository", () => {
     expect(resolveRepository(ticket("Payments"), [config])).toBe(config));
 
   it("fails explicitly without a mapping", () =>
-    expect(() => resolveRepository(ticket("Other"), [config])).toThrow(DomainError));
+    expect(() => resolveRepository(ticket("Other"), [config])).toThrow(Error));
 });

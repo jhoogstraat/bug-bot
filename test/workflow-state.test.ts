@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { MergeRequest } from "../src/domain/merge-request.js";
-import type { BugFixWorkflowState } from "../src/domain/workflow.js";
+import type { MergeRequest } from "../src/features/bugfix/merge-request.js";
+import type { BugFixWorkflowState } from "../src/features/bugfix/workflow-state.js";
 import {
   done,
   emptyTokenUsage,
@@ -9,7 +9,7 @@ import {
   published,
   repairing,
   reviewReady,
-} from "../src/domain/workflow.js";
+} from "../src/features/bugfix/workflow-state.js";
 
 const state = (statusDetail?: string): BugFixWorkflowState => ({
   runId: "bugfix/ABC-123/1",

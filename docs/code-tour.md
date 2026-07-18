@@ -43,12 +43,12 @@ Jira filter URL
 
 ### Main server
 
-[`src/server.ts`](../src/server.ts) is the primary runtime entry point and composition root. It:
+[`src/app/server.ts`](../src/app/server.ts) is the primary runtime entry point and composition root. It:
 
 - loads environment configuration;
 - selects fake or HTTP Jira and GitLab adapters;
 - selects the fake or Codex harness;
-- creates the workspace manager and execution runner;
+- creates the local Git workspace boundary;
 - supplies the workflow's concrete dependencies;
 - registers the queue workflow, per-ticket workflow, and webhook services;
 - registers the Restate endpoint with `restate.serve` and exposes the public webhook API through `Bun.serve`.
@@ -57,7 +57,7 @@ Use `bun run dev` during development or `bun run start` for the built applicatio
 
 ### Jira filter queue
 
-[`src/restate/services/bugfix-queue.ts`](../src/restate/services/bugfix-queue.ts) exposes the `BugFixQueue` Restate service. Its `run` handler accepts:
+[`src/features/bugfix/bugfix-queue.restate-service.ts`](../src/features/bugfix/bugfix-queue.restate-service.ts) exposes the `BugFixQueue` Restate service. Its `run` handler accepts:
 
 ```ts
 {
@@ -72,7 +72,7 @@ The queue is captured once inside a journaled `ctx.run`. Tickets added to the Ji
 
 ### Single-ticket Jira webhook
 
-[`src/restate/webhooks/jira-webhook.ts`](../src/restate/webhooks/jira-webhook.ts) is an alternative entry point for one eligible Jira bug. It validates the event and starts a ticket workflow directly rather than loading a filter queue.
+[`src/features/bugfix/ingress/jira-webhook.restate-service.ts`](../src/features/bugfix/ingress/jira-webhook.restate-service.ts) is an alternative entry point for one eligible Jira bug. It validates the event and starts a ticket workflow directly rather than loading a filter queue.
 
 ### Optional MCP server
 
@@ -82,7 +82,7 @@ The MCP server is optional and is not called directly by the main workflow. Its 
 
 ## How Restate is used
 
-The central integration is [`src/restate/workflows/bugfix/definition.ts`](../src/restate/workflows/bugfix/definition.ts). It is the single owner of the sequential ticket lifecycle: state, journaled operations, callback waits, repair policy, and terminal outcomes.
+The central integration is [`src/features/bugfix/bugfix.restate-workflow.ts`](../src/features/bugfix/bugfix.restate-workflow.ts). It is the single owner of the sequential ticket lifecycle: state, journaled operations, callback waits, repair policy, and terminal outcomes.
 
 ### Durable identity
 
@@ -123,7 +123,7 @@ Adapters should still make mutating requests idempotent where the remote API sup
 
 ### Durable state
 
-The workflow restores and saves `BugFixWorkflowState` using `ctx.get` and `ctx.set`. The state contract is defined in [`src/domain/workflow.ts`](../src/domain/workflow.ts).
+The workflow restores and saves `BugFixWorkflowState` using `ctx.get` and `ctx.set`. The state contract is defined in [`src/features/bugfix/workflow-state.ts`](../src/features/bugfix/workflow-state.ts).
 
 Durable state includes:
 
@@ -164,7 +164,7 @@ The queue uses `workflowSendClient` to start every captured ticket without waiti
 
 ## How agent work is implemented
 
-The project does not use the OpenAI Agents SDK. It defines a provider-neutral [`CodingHarness`](../src/domain/harness.ts) interface instead.
+The project does not use the OpenAI Agents SDK. It defines a provider-neutral [`CodingHarness`](../src/features/bugfix/coding/coding-harness.ts) interface instead.
 
 The harness operations are:
 
@@ -176,7 +176,7 @@ The harness operations are:
 
 ### Codex SDK adapter
 
-[`src/harness/codex-harness.ts`](../src/harness/codex-harness.ts) implements `CodingHarness` through the official `@openai/codex-sdk`. The SDK manages local Codex threads and the adapter uses its typed start, resume, structured-output, and usage APIs.
+[`src/features/bugfix/coding/codex-coding-harness.ts`](../src/features/bugfix/coding/codex-coding-harness.ts) implements `CodingHarness` through the official `@openai/codex-sdk`. The SDK manages local Codex threads and the adapter uses its typed start, resume, structured-output, and usage APIs.
 
 Each invocation receives:
 
@@ -188,11 +188,11 @@ Each invocation receives:
 
 Investigation and review start fresh read-only sessions. Implementation repairs resume the implementer session so the agent receives only the compact new evidence required for that correction.
 
-Prompts live in [`src/harness/harness-prompts.ts`](../src/harness/harness-prompts.ts). Structured output validation and JSON schemas live in [`src/harness/harness-result-parser.ts`](../src/harness/harness-result-parser.ts).
+Prompts live in [`src/features/bugfix/coding/codex-prompts.ts`](../src/features/bugfix/coding/codex-prompts.ts). Structured output validation and JSON schemas live in [`src/features/bugfix/coding/codex-result-parser.ts`](../src/features/bugfix/coding/codex-result-parser.ts).
 
 ### Fake harness
 
-[`src/harness/fake-coding-harness.ts`](../src/harness/fake-coding-harness.ts) implements the same interface without calling an external coding provider. It supports deterministic local development and integration tests.
+[`src/features/bugfix/coding/fake-coding-harness.ts`](../src/features/bugfix/coding/fake-coding-harness.ts) implements the same interface without calling an external coding provider. It supports deterministic local development and integration tests.
 
 ### MCP SDK
 
@@ -204,13 +204,13 @@ The following files contain the behavior that defines the bugfix process.
 
 ### Durable orchestration
 
-[`src/restate/workflows/bugfix/definition.ts`](../src/restate/workflows/bugfix/definition.ts) owns the complete durable lifecycle. Its `run` handler reads as a sequence of ticket loading, investigation, gating, implementation, review, publication, callback waits, repair, and handoff steps.
+[`src/features/bugfix/bugfix.restate-workflow.ts`](../src/features/bugfix/bugfix.restate-workflow.ts) owns the complete durable lifecycle. Its `run` handler reads as a sequence of ticket loading, investigation, gating, implementation, review, publication, callback waits, repair, and handoff steps.
 
 This is the most important file for understanding the end-to-end behavior.
 
 ### Confidence policy
 
-[`src/domain/analysis.ts`](../src/domain/analysis.ts) defines `TicketAnalysis`, renders the analysis document, and applies the deterministic gate. A ticket is actionable only when:
+[`src/features/bugfix/analysis.ts`](../src/features/bugfix/analysis.ts) defines `TicketAnalysis`, renders the analysis document, and applies the deterministic gate. A ticket is actionable only when:
 
 - root-cause confidence is High;
 - proposed-fix confidence is High;
@@ -224,12 +224,12 @@ The workflow's `decideRepair` policy determines whether a Jenkins failure may tr
 
 ### Domain contracts
 
-The central data contracts are under [`src/domain`](../src/domain):
+The bugfix data contracts are under [`src/features/bugfix`](../src/features/bugfix):
 
 - `analysis.ts`: investigation and confidence gate;
 - `ticket.ts`: normalized Jira evidence;
-- `workflow.ts`: durable state and callbacks;
-- `harness.ts`: agent task and result contracts;
+- `workflow-state.ts`: durable state and callbacks;
+- `coding/coding-harness.ts`: agent task and result contracts;
 - `ci.ts`: compact CI and Sonar evidence;
 - `repository.ts`: repository configuration;
 - `merge-request.ts`: merge-request contract;
@@ -239,22 +239,20 @@ The central data contracts are under [`src/domain`](../src/domain):
 
 Infrastructure performs I/O or supplies an execution mechanism. These components should be replaceable without changing confidence or workflow policy.
 
-| Concern                                | Implementation                                                                            |
-| -------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Jira HTTP API                          | [`src/integrations/jira/jira-client.ts`](../src/integrations/jira/jira-client.ts)         |
-| Jira normalization                     | [`src/integrations/jira/jira-normalizer.ts`](../src/integrations/jira/jira-normalizer.ts) |
-| GitLab HTTP API                        | [`src/integrations/gitlab/gitlab-client.ts`](../src/integrations/gitlab/gitlab-client.ts) |
-| Jenkins client and log parsing         | [`src/integrations/jenkins`](../src/integrations/jenkins)                                 |
-| SonarQube client and finding filtering | [`src/integrations/sonarqube`](../src/integrations/sonarqube)                             |
-| Webhook validation and delivery        | [`src/restate/webhooks`](../src/restate/webhooks)                                         |
-| Runner abstraction                     | [`src/runner/execution-runner.ts`](../src/runner/execution-runner.ts)                     |
-| Local runner                           | [`src/runner/local-runner.ts`](../src/runner/local-runner.ts)                             |
-| Git workspace operations               | [`src/runner/workspace-manager.ts`](../src/runner/workspace-manager.ts)                   |
-| Codex process adapter                  | [`src/harness/codex-harness.ts`](../src/harness/codex-harness.ts)                         |
-| Environment configuration              | [`src/config/environment.ts`](../src/config/environment.ts)                               |
-| Runtime composition                    | [`src/server.ts`](../src/server.ts)                                                       |
+| Concern                                | Implementation                                                                                                      |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Jira HTTP API                          | [`src/integrations/jira/jira-client.ts`](../src/integrations/jira/jira-client.ts)                                   |
+| Jira normalization                     | [`src/integrations/jira/jira-normalizer.ts`](../src/integrations/jira/jira-normalizer.ts)                           |
+| GitLab HTTP API                        | [`src/integrations/gitlab/gitlab-client.ts`](../src/integrations/gitlab/gitlab-client.ts)                           |
+| Jenkins client and log parsing         | [`src/integrations/jenkins`](../src/integrations/jenkins)                                                           |
+| SonarQube client and finding filtering | [`src/integrations/sonarqube`](../src/integrations/sonarqube)                                                       |
+| Webhook validation and delivery        | [`src/features/bugfix/ingress`](../src/features/bugfix/ingress)                                                     |
+| Git workspace operations               | [`src/features/bugfix/workspace/local-git-workspaces.ts`](../src/features/bugfix/workspace/local-git-workspaces.ts) |
+| Codex process adapter                  | [`src/features/bugfix/coding/codex-coding-harness.ts`](../src/features/bugfix/coding/codex-coding-harness.ts)       |
+| Environment configuration              | [`src/app/environment.ts`](../src/app/environment.ts)                                                               |
+| Runtime composition                    | [`src/app/server.ts`](../src/app/server.ts)                                                                         |
 
-For example, moving execution from local processes to Kubernetes should require a new `ExecutionRunner`; it should not require changes to the confidence gate or repair policy.
+A future Kubernetes executor should own both its workspace and coding runtime behind a feature-local boundary; it should not require changes to the confidence gate or repair policy.
 
 ## Error handling
 
@@ -262,7 +260,7 @@ Error handling is split between domain classification, workflow policy, Restate 
 
 ### Stable error categories
 
-[`src/domain/errors.ts`](../src/domain/errors.ts) defines `DomainError` codes such as:
+Workflow and integration failures use native `Error` values; durable workflow outcomes use Restate `TerminalError` directly.
 
 - `HARNESS_TIMEOUT`;
 - `HARNESS_BLOCKED`;
@@ -316,11 +314,11 @@ bun run check
 
 For a first pass through the code, use this order:
 
-1. [`src/server.ts`](../src/server.ts) — see how the application is assembled.
-2. [`src/restate/services/bugfix-queue.ts`](../src/restate/services/bugfix-queue.ts) — see how filter runs fan out.
-3. [`src/restate/workflows/bugfix/definition.ts`](../src/restate/workflows/bugfix/definition.ts) — follow the complete sequential lifecycle.
-4. [`src/domain/analysis.ts`](../src/domain/analysis.ts) and [`src/domain/workflow.ts`](../src/domain/workflow.ts) — understand deterministic policy and durable state.
-5. [`src/domain/harness.ts`](../src/domain/harness.ts) and [`src/harness/codex-harness.ts`](../src/harness/codex-harness.ts) — understand the agent boundary.
-6. [`src/runner/workspace-manager.ts`](../src/runner/workspace-manager.ts) and [`src/integrations`](../src/integrations) — inspect execution and external-system infrastructure.
+1. [`src/app/server.ts`](../src/app/server.ts) — see how the application is assembled.
+2. [`src/features/bugfix/bugfix-queue.restate-service.ts`](../src/features/bugfix/bugfix-queue.restate-service.ts) — see how filter runs fan out.
+3. [`src/features/bugfix/bugfix.restate-workflow.ts`](../src/features/bugfix/bugfix.restate-workflow.ts) — follow the complete sequential lifecycle.
+4. [`src/features/bugfix/analysis.ts`](../src/features/bugfix/analysis.ts) and [`src/features/bugfix/workflow-state.ts`](../src/features/bugfix/workflow-state.ts) — understand deterministic policy and durable state.
+5. [`src/features/bugfix/coding/coding-harness.ts`](../src/features/bugfix/coding/coding-harness.ts) and [`src/features/bugfix/coding/codex-coding-harness.ts`](../src/features/bugfix/coding/codex-coding-harness.ts) — understand the agent boundary.
+6. [`src/features/bugfix/workspace/local-git-workspaces.ts`](../src/features/bugfix/workspace/local-git-workspaces.ts) and [`src/integrations`](../src/integrations) — inspect execution and external-system infrastructure.
 
 For the workflow requirements and stage invariants, also see [`docs/architecture.md`](./architecture.md).

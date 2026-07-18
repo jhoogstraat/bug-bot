@@ -1,6 +1,5 @@
 import { Codex, type RunResult, type ThreadOptions, type TurnOptions } from "@openai/codex-sdk";
-import { DomainError } from "../domain/errors.js";
-import type { TicketAnalysis } from "../domain/analysis.js";
+import type { TicketAnalysis } from "../analysis.js";
 import type {
   AnalyzeHarnessTaskInput,
   CodingHarness,
@@ -11,14 +10,14 @@ import type {
   ReviewHarnessTaskInput,
   ReviseHarnessTaskInput,
   StartHarnessTaskInput,
-} from "../domain/harness.js";
+} from "./coding-harness.js";
 import {
   analysisTaskPrompt,
   initialTaskPrompt,
   repairTaskPrompt,
   reviewTaskPrompt,
   revisionTaskPrompt,
-} from "./harness-prompts.js";
+} from "./codex-prompts.js";
 import {
   analysisResultJsonSchema,
   parseHarnessReviewResult,
@@ -26,7 +25,7 @@ import {
   parseTicketAnalysis,
   reviewResultJsonSchema,
   runResultJsonSchema,
-} from "./harness-result-parser.js";
+} from "./codex-result-parser.js";
 
 interface CodexThread {
   readonly id: string | null;
@@ -168,8 +167,7 @@ export class CodexHarness implements CodingHarness {
         ...(turn.usage ? { usage: usageFrom(turn.usage) } : {}),
       };
     } catch (error) {
-      if (timeoutState.elapsed)
-        throw new DomainError("HARNESS_TIMEOUT", `Codex exceeded ${this.timeoutMinutes} minutes`);
+      if (timeoutState.elapsed) throw new Error(`Codex exceeded ${this.timeoutMinutes} minutes`);
 
       throw error;
     } finally {

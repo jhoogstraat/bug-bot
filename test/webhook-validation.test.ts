@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { validateJiraWebhook } from "../src/restate/webhooks/jira-webhook.js";
-import { validateJenkinsWebhook } from "../src/restate/webhooks/jenkins-webhook.js";
+import { validateJiraWebhook } from "../src/features/bugfix/ingress/jira-webhook.restate-service.js";
+import { validateJenkinsWebhook } from "../src/features/bugfix/ingress/jenkins-webhook.restate-service.js";
 describe("webhook validation", () => {
   it("accepts a ready bug", () =>
     expect(

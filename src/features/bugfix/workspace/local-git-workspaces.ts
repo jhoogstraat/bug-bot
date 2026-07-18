@@ -1,41 +1,46 @@
 import { execFile } from "node:child_process";
-import { mkdir, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
-import { DomainError } from "../domain/errors.js";
-import type { RepositoryConfig } from "../domain/repository.js";
-import type { Workspace } from "./execution-runner.js";
+import type { RepositoryConfig } from "../repository.js";
 
 const execFileAsync = promisify(execFile);
 
-export interface WorkspaceInspection {
+export interface RepositoryWorkspace {
+  path: string;
+  branchName: string;
+  baseCommitSha: string;
+}
+
+export interface CreateRepositoryWorkspaceInput {
+  workflowId: string;
+  issueKey: string;
+  shortSlug: string;
+  repository: RepositoryConfig;
+}
+
+export interface WorkspaceChanges {
   changedFiles: string[];
+}
+
+export interface WorkspaceInspection extends WorkspaceChanges {
   diff: string;
   diffSummary: string;
 }
 
-export class WorkspaceManager {
-  private readonly workspaces = new Map<string, Workspace>();
-  constructor(
-    private readonly root: string,
-    private readonly keepWorkspaces: boolean,
-  ) {}
+export class LocalGitWorkspaces {
+  constructor(private readonly root: string) {}
 
-  async create(
-    workflowId: string,
-    issueKey: string,
-    shortSlug: string,
-    repository: RepositoryConfig,
-  ): Promise<Workspace> {
+  async create(input: CreateRepositoryWorkspaceInput): Promise<RepositoryWorkspace> {
     const root = resolve(this.root);
     await mkdir(root, { recursive: true });
-    const suffix = createHash("sha256").update(workflowId).digest("hex").slice(0, 12);
-    const path = resolve(root, `${sanitize(issueKey)}-${suffix}`);
-    if (!path.startsWith(`${root}/`))
-      throw new DomainError("WORKSPACE_FAILURE", "Resolved workspace escaped its root");
+    const suffix = createHash("sha256").update(input.workflowId).digest("hex").slice(0, 12);
+    const path = resolve(root, `${sanitize(input.issueKey)}-${suffix}`);
+    if (!path.startsWith(`${root}/`)) throw new Error("Resolved workspace escaped its root");
 
-    const branchName = `agent/${issueKey.toLowerCase()}/${slug(shortSlug)}`;
+    const branchName = `agent/${input.issueKey.toLowerCase()}/${slug(input.shortSlug)}`;
+    let createdWorkspace = false;
     try {
       if (await pathExists(path)) {
         const { stdout: existingBranch } = await execFileAsync(
@@ -46,28 +51,28 @@ export class WorkspaceManager {
 
         const { stdout: existingBase } = await execFileAsync(
           "git",
-          ["merge-base", "HEAD", repository.defaultBranch],
+          ["merge-base", "HEAD", input.repository.defaultBranch],
           { cwd: path },
         );
 
-        const resolvedPath = await realpath(path);
         const workspace = {
-          id: resolvedPath,
-          path: resolvedPath,
+          path,
           branchName:
-            existingBranch.trim() === repository.defaultBranch ? branchName : existingBranch.trim(),
+            existingBranch.trim() === input.repository.defaultBranch
+              ? branchName
+              : existingBranch.trim(),
           baseCommitSha: existingBase.trim(),
         };
 
-        this.workspaces.set(resolvedPath, workspace);
         return workspace;
       }
 
-      await execFileAsync("git", ["clone", "--no-hardlinks", repository.cloneUrl, path], {
+      createdWorkspace = true;
+      await execFileAsync("git", ["clone", "--no-hardlinks", input.repository.cloneUrl, path], {
         timeout: 120_000,
       });
 
-      await execFileAsync("git", ["checkout", repository.defaultBranch], {
+      await execFileAsync("git", ["checkout", input.repository.defaultBranch], {
         cwd: path,
         timeout: 30_000,
       });
@@ -77,27 +82,23 @@ export class WorkspaceManager {
         timeout: 10_000,
       });
 
-      const resolvedPath = await realpath(path);
       const workspace = {
-        id: resolvedPath,
-        path: resolvedPath,
+        path,
         branchName,
         baseCommitSha: base.trim(),
       };
 
-      this.workspaces.set(resolvedPath, workspace);
       return workspace;
     } catch (error) {
-      await rm(path, { recursive: true, force: true });
-      throw new DomainError(
-        "WORKSPACE_FAILURE",
+      if (createdWorkspace) await rm(path, { recursive: true, force: true });
+      throw new Error(
         `Could not create workspace: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
 
-  async activateBranch(workspace: Workspace): Promise<Workspace> {
-    this.assertKnown(workspace.id);
+  async activateBranch(workspace: RepositoryWorkspace): Promise<RepositoryWorkspace> {
+    this.assertContained(workspace);
     const { stdout: current } = await execFileAsync("git", ["branch", "--show-current"], {
       cwd: workspace.path,
     });
@@ -116,12 +117,11 @@ export class WorkspaceManager {
       }
     }
 
-    this.workspaces.set(workspace.id, workspace);
     return workspace;
   }
 
-  async inspect(workspace: Workspace): Promise<WorkspaceInspection> {
-    this.assertKnown(workspace.id);
+  async inspectPendingChanges(workspace: RepositoryWorkspace): Promise<WorkspaceChanges> {
+    this.assertContained(workspace);
     const { stdout: status } = await execFileAsync("git", ["status", "--porcelain=v1", "-uall"], {
       cwd: workspace.path,
       maxBuffer: 2_000_000,
@@ -132,32 +132,25 @@ export class WorkspaceManager {
       .filter(Boolean)
       .map((line) => line.slice(3).split(" -> ").at(-1) ?? "");
 
-    const { stdout: diff } = await execFileAsync(
-      "git",
-      ["diff", "--no-ext-diff", "--binary", "HEAD"],
-      { cwd: workspace.path, maxBuffer: 10_000_000 },
-    );
-
-    const { stdout: summary } = await execFileAsync("git", ["diff", "--stat", "HEAD"], {
-      cwd: workspace.path,
-      maxBuffer: 1_000_000,
-    });
-
-    return { changedFiles, diff, diffSummary: summary };
+    return { changedFiles };
   }
 
-  async writeArtifact(workspace: Workspace, relativePath: string, content: string): Promise<void> {
-    this.assertKnown(workspace.id);
-    const target = resolve(workspace.path, relativePath);
+  async writeInvestigationReport(
+    workspace: RepositoryWorkspace,
+    issueKey: string,
+    content: string,
+  ): Promise<void> {
+    this.assertContained(workspace);
+    const target = resolve(workspace.path, "ticket-analysis", sanitize(issueKey), "ANALYSIS.md");
     if (!target.startsWith(`${resolve(workspace.path)}/`))
-      throw new DomainError("WORKSPACE_FAILURE", "Artifact path escaped its workspace");
+      throw new Error("Artifact path escaped its workspace");
 
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, content, "utf8");
   }
 
-  async inspectFromBase(workspace: Workspace): Promise<WorkspaceInspection> {
-    this.assertKnown(workspace.id);
+  async inspectChangesSinceBase(workspace: RepositoryWorkspace): Promise<WorkspaceInspection> {
+    this.assertContained(workspace);
     const { stdout: names } = await execFileAsync(
       "git",
       ["diff", "--name-only", `${workspace.baseCommitSha}..HEAD`],
@@ -179,8 +172,8 @@ export class WorkspaceManager {
     return { changedFiles: names.split(/\r?\n/).filter(Boolean), diff, diffSummary: summary };
   }
 
-  async commit(workspace: Workspace, message: string): Promise<string> {
-    this.assertKnown(workspace.id);
+  async commitChanges(workspace: RepositoryWorkspace, message: string): Promise<string> {
+    this.assertContained(workspace);
     await execFileAsync("git", ["add", "--all"], { cwd: workspace.path });
     await execFileAsync(
       "git",
@@ -202,31 +195,21 @@ export class WorkspaceManager {
     return stdout.trim();
   }
 
-  async push(workspace: Workspace): Promise<void> {
-    this.assertKnown(workspace.id);
+  async pushBranch(workspace: RepositoryWorkspace): Promise<void> {
+    this.assertContained(workspace);
     try {
       await execFileAsync("git", ["push", "--set-upstream", "origin", workspace.branchName], {
         cwd: workspace.path,
         timeout: 120_000,
       });
     } catch (error) {
-      throw new DomainError("PUSH_FAILURE", error instanceof Error ? error.message : String(error));
+      throw new Error(error instanceof Error ? error.message : String(error));
     }
   }
 
-  async destroy(id: string): Promise<void> {
-    const workspace = this.workspaces.get(id);
-    this.workspaces.delete(id);
-    if (!this.keepWorkspaces && this.isWithinRoot(id))
-      await rm(workspace?.path ?? id, { recursive: true, force: true });
-  }
-
-  get(id: string): Workspace | undefined {
-    return this.workspaces.get(id);
-  }
-  private assertKnown(id: string): void {
-    if (!this.workspaces.has(id) && !this.isWithinRoot(id))
-      throw new DomainError("WORKSPACE_FAILURE", `Unknown workspace ${id}`);
+  private assertContained(workspace: RepositoryWorkspace): void {
+    if (!this.isWithinRoot(workspace.path))
+      throw new Error("Workspace escaped its configured root");
   }
   private isWithinRoot(path: string): boolean {
     const root = resolve(this.root);

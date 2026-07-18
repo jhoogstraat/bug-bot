@@ -1,10 +1,9 @@
 import * as restate from "@restatedev/restate-sdk";
 import { z } from "zod";
-import { DomainError } from "../../domain/errors.js";
-import type { BugFixQueue } from "../../domain/queue.js";
+import type { BugFixQueue } from "./queue.js";
 import type { JiraClient } from "../../integrations/jira/jira-client.js";
-import type { BugFixRestateWorkflow } from "../workflows/bugfix/definition.js";
-import { workflowId } from "../workflows/bugfix/definition.js";
+import type { BugFixRestateWorkflow } from "./bugfix.restate-workflow.js";
+import { workflowId } from "./bugfix.restate-workflow.js";
 
 const inputSchema = z.object({
   filterUrl: z.url(),
@@ -16,10 +15,6 @@ export function createBugFixQueueRestateService(jira: JiraClient, workflow: BugF
     name: "BugFixQueue",
     options: {
       ingressPrivate: true,
-      asTerminalError: (error) =>
-        error instanceof DomainError
-          ? new restate.TerminalError(error.message, { errorCode: 422 })
-          : undefined,
     },
     handlers: {
       run: async (ctx: restate.Context, raw: unknown) => {
@@ -59,10 +54,7 @@ export async function captureBugFixQueue(
 
     nextPageToken = page.isLast ? undefined : page.nextPageToken;
     if (!page.isLast && !nextPageToken)
-      throw new DomainError(
-        "VALIDATION_FAILURE",
-        "Jira pagination did not provide a next-page token",
-      );
+      throw new Error("Jira pagination did not provide a next-page token");
   } while (nextPageToken);
 
   return {

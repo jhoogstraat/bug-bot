@@ -10,20 +10,18 @@ import * as restate from "@restatedev/restate-sdk";
 import { RestateTestEnvironment } from "@restatedev/restate-sdk-testcontainers";
 import { createEndpointHandler } from "@restatedev/restate-sdk";
 import * as http2 from "node:http2";
-import { DomainError } from "../src/domain/errors.js";
 import type { GitLabClient } from "../src/integrations/gitlab/gitlab-client.js";
-import type { StartBugFixInput } from "../src/domain/workflow.js";
-import type { RepositoryConfig } from "../src/domain/repository.js";
-import { FakeCodingHarness } from "../src/harness/fake-coding-harness.js";
+import type { StartBugFixInput } from "../src/features/bugfix/workflow-state.js";
+import type { RepositoryConfig } from "../src/features/bugfix/repository.js";
+import { FakeCodingHarness } from "../src/features/bugfix/coding/fake-coding-harness.js";
 import { FakeJiraClient } from "../src/integrations/jira/jira-client.js";
 import type { JiraIssueDto } from "../src/integrations/jira/jira-types.js";
-import { LocalRunner } from "../src/runner/local-runner.js";
-import { WorkspaceManager } from "../src/runner/workspace-manager.js";
-import { createBugFixQueueRestateService } from "../src/restate/services/bugfix-queue.js";
+import { LocalGitWorkspaces } from "../src/features/bugfix/workspace/local-git-workspaces.js";
+import { createBugFixQueueRestateService } from "../src/features/bugfix/bugfix-queue.restate-service.js";
 import {
   createBugFixRestateWorkflow,
   type BugFixRestateWorkflow,
-} from "../src/restate/workflows/bugfix/definition.js";
+} from "../src/features/bugfix/bugfix.restate-workflow.js";
 
 const exec = promisify(execFile);
 
@@ -149,18 +147,17 @@ describeWithRestate("Restate workflow state recovery", () => {
     };
 
     const jira = new FakeJiraClient(new Map([[issue.key, issue]]));
-    const workspaces = new WorkspaceManager(join(root, "workspaces"), true);
+    const workspaces = new LocalGitWorkspaces(join(root, "workspaces"));
     const gitlab: GitLabClient = {
       createDraftMergeRequest: async () => {
-        throw new DomainError("MR_CREATION_FAILURE", "Merge request creation was rejected");
+        throw new restate.TerminalError("Merge request creation was rejected");
       },
     };
 
     const workflow = createBugFixRestateWorkflow({
       jira,
       gitlab,
-      harness: new FakeCodingHarness(),
-      runner: new LocalRunner(workspaces),
+      codingHarness: new FakeCodingHarness(),
       workspaces,
       resolveRepository: () => repository,
       actionableRepositoryId: repository.id,

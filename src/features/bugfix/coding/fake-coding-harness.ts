@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { TicketAnalysis } from "../domain/analysis.js";
+import type { TicketAnalysis } from "../analysis.js";
 import type {
   AnalyzeHarnessTaskInput,
   CodingHarness,
@@ -11,7 +11,7 @@ import type {
   ReviewHarnessTaskInput,
   ReviseHarnessTaskInput,
   StartHarnessTaskInput,
-} from "../domain/harness.js";
+} from "./coding-harness.js";
 
 export class FakeCodingHarness implements CodingHarness {
   readonly analyses: AnalyzeHarnessTaskInput[] = [];

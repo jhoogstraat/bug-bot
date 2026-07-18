@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { addTokenUsage, emptyTokenUsage } from "../src/domain/workflow.js";
+import { addTokenUsage, emptyTokenUsage } from "../src/features/bugfix/workflow-state.js";
 describe("token aggregation", () => {
   it("tracks each stage and total", () => {
     const one = addTokenUsage(emptyTokenUsage(), "initialRun", 100);

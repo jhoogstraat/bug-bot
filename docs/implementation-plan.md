@@ -20,10 +20,10 @@ Status: complete.
 
 Status: initial slice complete.
 
-## Phase 3: Local runner and Codex integration
+## Phase 3: Local Git workspaces and Codex integration
 
 - Scope: isolated clone/branch, path/timeout/output controls, schema-driven Codex SDK start/resume/review.
-- Deliverables: local runner, fake harness, real Codex adapter, Docker runner contract.
+- Deliverables: local Git workspace boundary, fake harness, real Codex adapter, Docker execution contract.
 - Tests: harness schema validation and real Git integration.
 - Exit: fake flow passes and real mode can start with valid credentials.
 - Risks: Codex JSON event fields can evolve; keep parsing tolerant and output schema strict.
@@ -73,7 +73,7 @@ Status: fresh adversarial review, implementer revision, fresh pipeline/review re
 ## Phase 8: Kubernetes runner and production hardening
 
 - Scope: one Job/Pod per ticket, network/secret/resource policy, audit retention, OpenTelemetry, HA Restate, disaster recovery.
-- Deliverables: Kubernetes runner behind `ExecutionRunner`, deployment manifests, SLO dashboards.
+- Deliverables: Kubernetes executor that owns its workspace and coding runtime, deployment manifests, SLO dashboards.
 - Tests: pod escape controls, cancellation/cleanup, restart/replay, credential expiry, load and chaos tests.
 - Exit: production security review and operational runbook approved.
 - Risks: untrusted build execution, dependency downloads, artifact retention, and cost controls.

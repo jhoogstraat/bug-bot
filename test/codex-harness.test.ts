@@ -1,8 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import type { RunResult, ThreadOptions, TurnOptions } from "@openai/codex-sdk";
-import type { TicketAnalysis } from "../src/domain/analysis.js";
-import type { NormalizedBugTicket } from "../src/domain/ticket.js";
-import { CodexHarness, type CodexClient } from "../src/harness/codex-harness.js";
+import type { TicketAnalysis } from "../src/features/bugfix/analysis.js";
+import type { NormalizedBugTicket } from "../src/features/bugfix/ticket.js";
+import {
+  CodexHarness,
+  type CodexClient,
+} from "../src/features/bugfix/coding/codex-coding-harness.js";
 
 const ticket: NormalizedBugTicket = {
   key: "ABC-1",

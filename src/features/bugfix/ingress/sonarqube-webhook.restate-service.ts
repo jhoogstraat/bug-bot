@@ -1,6 +1,6 @@
 import * as restate from "@restatedev/restate-sdk";
 import { z } from "zod";
-import type { BugFixRestateWorkflow } from "../workflows/bugfix/definition.js";
+import type { BugFixRestateWorkflow } from "../bugfix.restate-workflow.js";
 
 const finding = z.object({
   rule: z.string(),

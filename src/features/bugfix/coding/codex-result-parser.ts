@@ -1,6 +1,6 @@
 import { z } from "zod";
-import type { HarnessReviewResult, HarnessRunResult } from "../domain/harness.js";
-import type { TicketAnalysis } from "../domain/analysis.js";
+import type { HarnessReviewResult, HarnessRunResult } from "./coding-harness.js";
+import type { TicketAnalysis } from "../analysis.js";
 
 const usage = z
   .object({

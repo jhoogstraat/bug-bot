@@ -29,7 +29,7 @@ export interface BugFixWorkflowState {
   branchName?: string;
   baseCommitSha?: string;
   currentCommitSha?: string;
-  harness?: { provider: "codex"; sessionId?: string; workspaceId?: string };
+  harness?: { provider: "codex"; sessionId?: string; workspacePath?: string };
   mergeRequest?: MergeRequest;
   analysis?: TicketAnalysis;
   state: WorkflowStage;

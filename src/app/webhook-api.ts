@@ -1,10 +1,10 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import * as clients from "@restatedev/restate-sdk-clients";
 import { z } from "zod";
-import { createGitLabWebhookIngressService } from "../restate/webhooks/gitlab-webhook.js";
-import { createJenkinsWebhookIngressService } from "../restate/webhooks/jenkins-webhook.js";
-import { createJiraWebhookIngressService } from "../restate/webhooks/jira-webhook.js";
-import { createSonarQubeWebhookIngressService } from "../restate/webhooks/sonarqube-webhook.js";
+import { createGitLabWebhookIngressService } from "../features/bugfix/ingress/gitlab-webhook.restate-service.js";
+import { createJenkinsWebhookIngressService } from "../features/bugfix/ingress/jenkins-webhook.restate-service.js";
+import { createJiraWebhookIngressService } from "../features/bugfix/ingress/jira-webhook.restate-service.js";
+import { createSonarQubeWebhookIngressService } from "../features/bugfix/ingress/sonarqube-webhook.restate-service.js";
 
 type WebhookRestateServices = {
   jira: ReturnType<typeof createJiraWebhookIngressService>;

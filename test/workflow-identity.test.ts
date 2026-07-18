@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { workflowId } from "../src/restate/workflows/bugfix/definition.js";
+import { workflowId } from "../src/features/bugfix/bugfix.restate-workflow.js";
 describe("workflow identity", () => {
   it("is stable per ticket generation", () => {
     expect(workflowId("ABC-123", 1)).toBe("bugfix/ABC-123/1");

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { JiraClient, JiraSearchPage } from "../src/integrations/jira/jira-client.js";
 import type { JiraIssueDto } from "../src/integrations/jira/jira-types.js";
-import { captureBugFixQueue } from "../src/restate/services/bugfix-queue.js";
+import { captureBugFixQueue } from "../src/features/bugfix/bugfix-queue.restate-service.js";
 
 const issue = (key: string): JiraIssueDto => ({
   key,

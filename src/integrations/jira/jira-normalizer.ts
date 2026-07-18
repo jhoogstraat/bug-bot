@@ -1,4 +1,7 @@
-import type { AttachmentClassification, NormalizedBugTicket } from "../../domain/ticket.js";
+import type {
+  AttachmentClassification,
+  NormalizedBugTicket,
+} from "../../features/bugfix/ticket.js";
 import type { JiraAttachmentDto, JiraIssueDto } from "./jira-types.js";
 
 export interface JiraNormalizationLimits {

@@ -1,7 +1,7 @@
 import * as restate from "@restatedev/restate-sdk";
 import { z } from "zod";
-import { parseJenkinsFailure } from "../../integrations/jenkins/jenkins-failure-parser.js";
-import type { BugFixRestateWorkflow } from "../workflows/bugfix/definition.js";
+import { parseJenkinsFailure } from "../../../integrations/jenkins/jenkins-failure-parser.js";
+import type { BugFixRestateWorkflow } from "../bugfix.restate-workflow.js";
 
 const schema = z.object({
   workflowId: z.string().min(1),

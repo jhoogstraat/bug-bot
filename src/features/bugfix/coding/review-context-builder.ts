@@ -1,4 +1,4 @@
-import type { ReviewHarnessTaskInput } from "../domain/harness.js";
+import type { ReviewHarnessTaskInput } from "./coding-harness.js";
 export function buildReviewContext(input: ReviewHarnessTaskInput): string {
   return JSON.stringify({
     ticket: input.ticket,

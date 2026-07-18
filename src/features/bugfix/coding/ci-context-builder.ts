@@ -1,4 +1,4 @@
-import type { ContinueHarnessTaskInput } from "../domain/harness.js";
+import type { ContinueHarnessTaskInput } from "./coding-harness.js";
 export function buildCiContext(input: ContinueHarnessTaskInput): string {
   return JSON.stringify({
     ticket: input.ticketSummary,
