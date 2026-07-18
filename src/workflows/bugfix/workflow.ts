@@ -1,5 +1,5 @@
 import * as restate from "@restatedev/restate-sdk";
-import { dependencies } from "./dependencies.js";
+import { jira, gitlab, codingHarness, workspaces, actionableRepositoryId } from "./dependencies.js";
 import {
   done,
   humanRequired,
@@ -8,21 +8,15 @@ import {
   published,
   reviewReady,
   workflowResult,
+  workspaceFromState,
 } from "./workflow-state.js";
 import { normalizeJiraIssue } from "../../integrations/jira/jira-normalizer.js";
-import {
-  commitImplementation,
-  implementTicket,
-  investigateTicket,
-  reviewPatch,
-  revisePatch,
-} from "./tasks/coding.js";
-import {
-  createMergeRequest,
-  linkMergeRequestInJira,
-  markJiraReadyToMerge,
-  pushReviewedBranch,
-} from "./tasks/publication.js";
+import { AnalysisTask } from "./tasks/analysis.js";
+import { CodingTask } from "./tasks/coding.js";
+import { PublicationTask } from "./tasks/publication.js";
+import { repositoryConfigs, resolveRepository } from "../../app/repository-configs.js";
+
+export const workflowId = (issueKey: string): string => `bugfix/${issueKey}`;
 
 export const BugFixWorkflow = restate.workflow({
   name: "BugFixWorkflow",
@@ -31,18 +25,24 @@ export const BugFixWorkflow = restate.workflow({
   },
   handlers: {
     run: async (ctx: restate.WorkflowContext, issueKey: string) => {
+      const analysisTask = new AnalysisTask(codingHarness, workspaces, actionableRepositoryId);
+      const codingTask = new CodingTask(codingHarness, workspaces);
+      const publicationTask = new PublicationTask(gitlab, jira);
+
       const runId = workflowId(issueKey);
 
-      const ticket = await ctx.run("load-normalized-ticket", async () =>
-        normalizeJiraIssue(await dependencies.jira.getIssue(issueKey)),
-      );
+      const ticketDto = await ctx.run("fetch-ticket", async () => await jira.getIssue(issueKey));
 
-      const repository = dependencies.resolveRepository(ticket);
+      const ticket = await ctx.run("normalize-ticket", () => normalizeJiraIssue(ticketDto));
+
+      const repository = await ctx.run("resolve-repo", () =>
+        resolveRepository(ticket, repositoryConfigs),
+      );
 
       const investigationWorkspace = await ctx.run(
         "create-workspace",
         () =>
-          dependencies.workspaces.create({
+          workspaces.create({
             workflowId: runId,
             issueKey: ticket.key,
             shortSlug: ticket.summary,
@@ -53,7 +53,7 @@ export const BugFixWorkflow = restate.workflow({
 
       const investigation = await ctx.run(
         "investigate-ticket",
-        () => investigateTicket(ticket, repository, investigationWorkspace),
+        () => analysisTask.investigateTicket(ticket, repository, investigationWorkspace),
         { maxRetryAttempts: 2 },
       );
 
@@ -73,25 +73,25 @@ export const BugFixWorkflow = restate.workflow({
         return workflowResult(runId, blockedState);
       }
 
-      await ctx.run("claim-jira-ticket", () => dependencies.jira.claimIssue(ticket.key), {
+      await ctx.run("claim-jira-ticket", () => jira.claimIssue(ticket.key), {
         maxRetryAttempts: 3,
       });
 
       const workspace = await ctx.run(
         "activate-focused-branch",
-        () => dependencies.workspaces.activateBranch(investigationWorkspace),
+        () => workspaces.activateBranch(investigationWorkspace),
         { maxRetryAttempts: 2 },
       );
 
       const harnessResult = await ctx.run(
         "start-codex",
-        () => implementTicket(ticket, repository, workspace, investigation.analysis),
+        () => codingTask.implementTicket(ticket, repository, workspace, investigation.analysis),
         { maxRetryAttempts: 2 },
       );
 
       const commitSha = await ctx.run(
         "validate-and-commit",
-        () => commitImplementation(workspace, ticket, repository, harnessResult),
+        () => codingTask.commitImplementation(workspace, ticket, repository, harnessResult),
         { maxRetryAttempts: 1 },
       );
 
@@ -109,7 +109,7 @@ export const BugFixWorkflow = restate.workflow({
       for (;;) {
         const review = await ctx.run(
           `independent-review-${reviewState.reviewAttempt}`,
-          () => reviewPatch(reviewState, ticket, []),
+          () => codingTask.reviewPatch(reviewState, ticket, []),
           { maxRetryAttempts: 2 },
         );
 
@@ -129,18 +129,19 @@ export const BugFixWorkflow = restate.workflow({
 
         reviewState = await ctx.run(
           `address-review-${reviewState.reviewAttempt + 1}`,
-          () => revisePatch(review.state, ticket, repository, review),
+          () => codingTask.revisePatch(review.state, ticket, repository, review),
           { maxRetryAttempts: 1 },
         );
       }
 
-      await ctx.run("push-branch", () => pushReviewedBranch(reviewState), {
+      await ctx.run("push-branch", () => workspaces.pushBranch(workspaceFromState(reviewState)), {
         maxRetryAttempts: 3,
       });
 
       const mergeRequest = await ctx.run(
         "create-draft-merge-request",
-        () => createMergeRequest(runId, ticket, repository, reviewState, harnessResult),
+        () =>
+          publicationTask.createMergeRequest(runId, ticket, repository, reviewState, harnessResult),
         { maxRetryAttempts: 3 },
       );
 
@@ -149,11 +150,13 @@ export const BugFixWorkflow = restate.workflow({
         "Draft merge request created; merge remains a human action",
       );
 
-      await ctx.run("jira-link-merge-request", () => linkMergeRequestInJira(readyState), {
-        maxRetryAttempts: 3,
-      });
+      await ctx.run(
+        "jira-link-merge-request",
+        () => publicationTask.linkMergeRequestInJira(readyState),
+        { maxRetryAttempts: 3 },
+      );
 
-      await ctx.run("jira-ready-to-merge", () => markJiraReadyToMerge(readyState), {
+      await ctx.run("jira-ready-to-merge", () => publicationTask.markJiraReadyToMerge(readyState), {
         maxRetryAttempts: 3,
       });
 
@@ -164,5 +167,3 @@ export const BugFixWorkflow = restate.workflow({
     },
   },
 });
-
-export const workflowId = (issueKey: string): string => `bugfix/${issueKey}`;

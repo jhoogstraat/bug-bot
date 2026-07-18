@@ -5,7 +5,6 @@ import { FakeGitLabClient, HttpGitLabClient } from "../../integrations/gitlab/gi
 import { FakeJiraClient, HttpJiraClient } from "../../integrations/jira/jira-client.js";
 import type { JiraIssueDto } from "../../integrations/jira/jira-types.js";
 import { loadEnvironment } from "../../app/environment.js";
-import { repositoryConfigs, resolveRepository } from "../../app/repository-configs.js";
 
 const environment = loadEnvironment();
 
@@ -29,7 +28,7 @@ function required(value: string | undefined, name: string): string {
   return value;
 }
 
-const jira =
+export const jira =
   environment.ADAPTER_MODE === "real"
     ? new HttpJiraClient(
         required(environment.JIRA_BASE_URL, "JIRA_BASE_URL"),
@@ -37,7 +36,7 @@ const jira =
       )
     : new FakeJiraClient(new Map([[demoIssue.key, demoIssue]]));
 
-const gitlab =
+export const gitlab =
   environment.ADAPTER_MODE === "real"
     ? new HttpGitLabClient(
         required(environment.GITLAB_BASE_URL, "GITLAB_BASE_URL"),
@@ -45,18 +44,11 @@ const gitlab =
       )
     : new FakeGitLabClient();
 
-const codingHarness =
+export const codingHarness =
   environment.HARNESS_MODE === "codex"
     ? new CodexHarness(environment.CODEX_TIMEOUT_MINUTES)
     : new FakeCodingHarness();
 
-/** Process-lifetime, stateless adapters used by the direct workflow definition. */
-export const dependencies = {
-  jira,
-  gitlab,
-  codingHarness,
-  workspaces: new LocalGitWorkspaces(environment.WORKSPACE_ROOT),
-  resolveRepository: (ticket: Parameters<typeof resolveRepository>[0]) =>
-    resolveRepository(ticket, repositoryConfigs),
-  actionableRepositoryId: environment.ACTIONABLE_REPOSITORY_ID,
-} as const;
+export const workspaces = new LocalGitWorkspaces(environment.WORKSPACE_ROOT);
+
+export const actionableRepositoryId = environment.ACTIONABLE_REPOSITORY_ID;

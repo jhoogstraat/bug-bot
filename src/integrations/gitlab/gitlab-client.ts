@@ -1,7 +1,7 @@
 import type { CreateMergeRequestInput, MergeRequest } from "../../domain/merge-request.js";
 
 export interface GitLabClient {
-  createDraftMergeRequest(input: CreateMergeRequestInput): Promise<MergeRequest>;
+  createMergeRequest(input: CreateMergeRequestInput): Promise<MergeRequest>;
 }
 
 export class HttpGitLabClient implements GitLabClient {
@@ -9,7 +9,7 @@ export class HttpGitLabClient implements GitLabClient {
     private readonly baseUrl: string,
     private readonly token: string,
   ) {}
-  async createDraftMergeRequest(input: CreateMergeRequestInput): Promise<MergeRequest> {
+  async createMergeRequest(input: CreateMergeRequestInput): Promise<MergeRequest> {
     const assigneeId = input.assignToCurrentUser ? await this.currentUserId() : undefined;
     const response = await fetch(
       `${this.baseUrl}/api/v4/projects/${encodeURIComponent(input.projectId)}/merge_requests`,
@@ -50,7 +50,7 @@ export class HttpGitLabClient implements GitLabClient {
 
 export class FakeGitLabClient implements GitLabClient {
   readonly created: CreateMergeRequestInput[] = [];
-  async createDraftMergeRequest(input: CreateMergeRequestInput): Promise<MergeRequest> {
+  async createMergeRequest(input: CreateMergeRequestInput): Promise<MergeRequest> {
     const existing = this.created.findIndex((item) => item.idempotencyKey === input.idempotencyKey);
     if (existing >= 0)
       return {

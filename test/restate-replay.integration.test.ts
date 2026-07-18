@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it, mock } from "bun:test";
 import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
@@ -12,9 +12,8 @@ import { createEndpointHandler } from "@restatedev/restate-sdk";
 import * as http2 from "node:http2";
 import { FakeJiraClient } from "../src/integrations/jira/jira-client.js";
 import type { JiraIssueDto } from "../src/integrations/jira/jira-types.js";
-import { createBugFixQueueRestateService } from "../src/entrypoints/bugfix-queue.restate-service.js";
+import type { createBugFixQueueRestateService } from "../src/entrypoints/bugfix-queue.restate-service.js";
 import type { BugFixWorkflow } from "../src/workflows/bugfix/workflow.js";
-import { dependencies } from "../src/workflows/bugfix/dependencies.js";
 import { FakeCodingHarness } from "../src/coding/fake-coding-harness.js";
 import type { AnalyzeHarnessTaskInput } from "../src/coding/coding-harness.js";
 import { FakeGitLabClient } from "../src/integrations/gitlab/gitlab-client.js";
@@ -67,10 +66,7 @@ const queueTarget = restate.workflow({
   },
 });
 
-const queue = createBugFixQueueRestateService(
-  new FakeJiraClient(new Map([[issue.key, issue]])),
-  queueTarget as unknown as typeof BugFixWorkflow,
-);
+let queue: ReturnType<typeof createBugFixQueueRestateService>;
 
 type ProductionWorkflowDefinition = restate.WorkflowDefinition<
   "BugFixWorkflow",
@@ -98,8 +94,21 @@ describeWithRestate("Restate always-replay integration", () => {
   beforeAll(async () => {
     const fixture = await createProductionWorkflowFixture();
     fixtureRoot = fixture.root;
-    Object.assign(dependencies, fixture.dependencies);
+
+    await mock.module("../src/workflows/bugfix/dependencies.js", () => fixture.dependencies);
+    await mock.module("../src/app/repository-configs.js", () => ({
+      repositoryConfigs: [fixture.repository],
+      resolveRepository: () => fixture.repository,
+    }));
+
     ({ BugFixWorkflow: productionWorkflow } = await import("../src/workflows/bugfix/workflow.js"));
+    const { createBugFixQueueRestateService } =
+      await import("../src/entrypoints/bugfix-queue.restate-service.js");
+
+    queue = createBugFixQueueRestateService(
+      new FakeJiraClient(new Map([[issue.key, issue]])),
+      queueTarget as unknown as typeof BugFixWorkflow,
+    );
 
     environment = await startRestateIntegrationEnvironment({
       services: [queueTarget, queue, queueInvoker, productionWorkflow],
@@ -177,7 +186,10 @@ async function createProductionWorkflowFixture() {
   await exec("git", ["config", "user.email", "bug-bot@example.test"], { cwd: seed });
   await writeFile(join(seed, "README.md"), "Replay fixture\n", "utf8");
   await exec("git", ["add", "README.md"], { cwd: seed });
-  await exec("git", ["commit", "-m", "test: seed replay fixture"], { cwd: seed });
+  await exec("git", ["-c", "commit.gpgsign=false", "commit", "-m", "test: seed replay fixture"], {
+    cwd: seed,
+  });
+
   await exec("git", ["remote", "add", "origin", remote], { cwd: seed });
   await exec("git", ["push", "origin", "main"], { cwd: seed });
 
@@ -203,12 +215,12 @@ async function createProductionWorkflowFixture() {
 
   return {
     root,
+    repository,
     dependencies: {
       jira,
       gitlab: new FakeGitLabClient(),
       codingHarness: new ReplayCodingHarness(),
       workspaces: new LocalGitWorkspaces(join(root, "workspaces")),
-      resolveRepository: () => repository,
       actionableRepositoryId: repository.id,
     },
   };

@@ -1,5 +1,49 @@
+import * as restate from "@restatedev/restate-sdk";
+import type { CodingHarness } from "../../../coding/coding-harness.js";
+import type { RepositoryConfig } from "../../../domain/repository.js";
 import type { NormalizedBugTicket } from "../../../domain/ticket.js";
 import type { TicketAnalysis } from "../../../domain/ticket-analysis.js";
+import type {
+  LocalGitWorkspaces,
+  RepositoryWorkspace,
+} from "../../../integrations/git/local-git-workspaces.js";
+
+export class AnalysisTask {
+  constructor(
+    private readonly harness: CodingHarness,
+    private readonly workspaces: LocalGitWorkspaces,
+    private readonly actionableRepositoryId: string,
+  ) {}
+
+  async investigateTicket(
+    ticket: NormalizedBugTicket,
+    repository: RepositoryConfig,
+    workspace: RepositoryWorkspace,
+  ): Promise<{ analysis: TicketAnalysis; gate: ReturnType<typeof applyConfidenceGate> }> {
+    const analysis = await this.harness.analyzeTask({
+      ticket,
+      workspacePath: workspace.path,
+      repositoryId: repository.id,
+      repositoryInstructions: repositoryInstructions(repository),
+      limits: {
+        maxAgentTurns: repository.limits.maxAgentTurns,
+        maxExecutionMinutes: repository.limits.maxExecutionMinutes,
+      },
+    });
+
+    if (analysis.issueKey !== ticket.key)
+      throw new restate.TerminalError(`Analysis returned ${analysis.issueKey} for ${ticket.key}`);
+
+    const gate = applyConfidenceGate(analysis, repository.id, this.actionableRepositoryId);
+    await this.workspaces.writeInvestigationReport(
+      workspace,
+      ticket.key,
+      analysisMarkdown(ticket, analysis, gate),
+    );
+
+    return { analysis, gate };
+  }
+}
 
 export function applyConfidenceGate(
   analysis: TicketAnalysis,
@@ -78,4 +122,12 @@ ${list(analysis.reproductionEvidence)}
 ## Missing information
 ${list(analysis.missingInformation)}
 ${decision.actionable ? "" : `\n## Human action required\n${analysis.humanRequest ?? decision.reason}\n`}`;
+}
+
+function repositoryInstructions(repository: RepositoryConfig) {
+  return {
+    buildCommands: repository.buildCommands,
+    testCommands: repository.testCommands,
+    lintCommands: repository.lintCommands,
+  };
 }

@@ -1,6 +1,3 @@
-import { buildCiContext } from "./ci-context-builder.js";
-import { buildReviewContext } from "./review-context-builder.js";
-import { buildTicketContext } from "./ticket-context-builder.js";
 import type {
   AnalyzeHarnessTaskInput,
   ContinueHarnessTaskInput,
@@ -8,6 +5,7 @@ import type {
   ReviseHarnessTaskInput,
   StartHarnessTaskInput,
 } from "./coding-harness.js";
+import { buildTicketContext, buildCiContext, buildReviewContext } from "./context-builder.js";
 
 export function analysisTaskPrompt(input: AnalyzeHarnessTaskInput): string {
   return `Investigate one Jira bug against this read-only repository snapshot. Do not edit files and do not access external systems.

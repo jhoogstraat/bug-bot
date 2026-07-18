@@ -1,160 +1,141 @@
 import * as restate from "@restatedev/restate-sdk";
-import type { HarnessReviewResult, HarnessRunResult } from "../../../coding/coding-harness.js";
+import type {
+  CodingHarness,
+  HarnessReviewResult,
+  HarnessRunResult,
+} from "../../../coding/coding-harness.js";
 import type { SonarFinding } from "../../../domain/ci.js";
 import type { RepositoryConfig } from "../../../domain/repository.js";
 import type { TicketAnalysis } from "../../../domain/ticket-analysis.js";
 import type { NormalizedBugTicket } from "../../../domain/ticket.js";
 import type {
+  LocalGitWorkspaces,
   RepositoryWorkspace,
   WorkspaceChanges,
 } from "../../../integrations/git/local-git-workspaces.js";
 import { type BugFixWorkflowState, workspaceFromState } from "../workflow-state.js";
-import { dependencies } from "../dependencies.js";
-import { analysisMarkdown, applyConfidenceGate } from "./analysis.js";
 
-export async function investigateTicket(
-  ticket: NormalizedBugTicket,
-  repository: RepositoryConfig,
-  workspace: RepositoryWorkspace,
-): Promise<{ analysis: TicketAnalysis; gate: ReturnType<typeof applyConfidenceGate> }> {
-  const analysis = await dependencies.codingHarness.analyzeTask({
-    ticket,
-    workspacePath: workspace.path,
-    repositoryId: repository.id,
-    repositoryInstructions: repositoryInstructions(repository),
-    limits: {
-      maxAgentTurns: repository.limits.maxAgentTurns,
-      maxExecutionMinutes: repository.limits.maxExecutionMinutes,
-    },
-  });
+export class CodingTask {
+  constructor(
+    private readonly harness: CodingHarness,
+    private readonly workspaces: LocalGitWorkspaces,
+  ) {}
 
-  if (analysis.issueKey !== ticket.key)
-    throw new restate.TerminalError(`Analysis returned ${analysis.issueKey} for ${ticket.key}`);
+  async implementTicket(
+    ticket: NormalizedBugTicket,
+    repository: RepositoryConfig,
+    workspace: RepositoryWorkspace,
+    analysis: TicketAnalysis,
+  ): Promise<HarnessRunResult> {
+    const result = await this.harness.startTask({
+      ticket,
+      approvedAnalysis: analysis,
+      workspacePath: workspace.path,
+      repositoryInstructions: repositoryInstructions(repository),
+      limits: {
+        maxAgentTurns: repository.limits.maxAgentTurns,
+        maxChangedFiles: repository.limits.maxChangedFiles,
+        maxExecutionMinutes: repository.limits.maxExecutionMinutes,
+      },
+    });
 
-  const gate = applyConfidenceGate(analysis, repository.id, dependencies.actionableRepositoryId);
-  await dependencies.workspaces.writeInvestigationReport(
-    workspace,
-    ticket.key,
-    analysisMarkdown(ticket, analysis, gate),
-  );
+    validateHarnessResult(result);
+    return result;
+  }
 
-  return { analysis, gate };
-}
+  async commitImplementation(
+    workspace: RepositoryWorkspace,
+    ticket: NormalizedBugTicket,
+    repository: RepositoryConfig,
+    result: HarnessRunResult,
+  ): Promise<string> {
+    return await this.commitValidatedPatch(
+      workspace,
+      repository,
+      result,
+      `fix(${ticket.key}): ${ticket.summary}`,
+    );
+  }
 
-export async function implementTicket(
-  ticket: NormalizedBugTicket,
-  repository: RepositoryConfig,
-  workspace: RepositoryWorkspace,
-  analysis: TicketAnalysis,
-): Promise<HarnessRunResult> {
-  const result = await dependencies.codingHarness.startTask({
-    ticket,
-    approvedAnalysis: analysis,
-    workspacePath: workspace.path,
-    repositoryInstructions: repositoryInstructions(repository),
-    limits: {
-      maxAgentTurns: repository.limits.maxAgentTurns,
-      maxChangedFiles: repository.limits.maxChangedFiles,
-      maxExecutionMinutes: repository.limits.maxExecutionMinutes,
-    },
-  });
+  async reviewPatch(
+    state: BugFixWorkflowState,
+    ticket: NormalizedBugTicket,
+    sonarFindings: SonarFinding[],
+  ): Promise<HarnessReviewResult & { state: BugFixWorkflowState }> {
+    const workspace = workspaceFromState(state);
+    const inspection = await this.workspaces.inspectChangesSinceBase(workspace);
+    if (!state.analysis)
+      throw new restate.TerminalError("Independent review requires the approved analysis");
 
-  validateHarnessResult(result);
-  return result;
-}
+    const review = await this.harness.review({
+      ticket,
+      analysis: state.analysis,
+      workspacePath: workspace.path,
+      diff: inspection.diff,
+      validationSummary: "Defect reproduction and relevant local checks completed",
+      ciStatus: "not started; review is required before publication",
+      sonarFindings,
+    });
 
-export async function commitImplementation(
-  workspace: RepositoryWorkspace,
-  ticket: NormalizedBugTicket,
-  repository: RepositoryConfig,
-  result: HarnessRunResult,
-): Promise<string> {
-  return await commitValidatedPatch(
-    workspace,
-    repository,
-    result,
-    `fix(${ticket.key}): ${ticket.summary}`,
-  );
-}
+    return {
+      ...review,
+      state: {
+        ...state,
+        statusDetail: review.summary,
+      },
+    };
+  }
 
-export async function reviewPatch(
-  state: BugFixWorkflowState,
-  ticket: NormalizedBugTicket,
-  sonarFindings: SonarFinding[],
-): Promise<HarnessReviewResult & { state: BugFixWorkflowState }> {
-  const workspace = workspaceFromState(state);
-  const inspection = await dependencies.workspaces.inspectChangesSinceBase(workspace);
-  if (!state.analysis)
-    throw new restate.TerminalError("Independent review requires the approved analysis");
+  async revisePatch(
+    state: BugFixWorkflowState,
+    ticket: NormalizedBugTicket,
+    repository: RepositoryConfig,
+    review: HarnessReviewResult,
+  ): Promise<BugFixWorkflowState> {
+    const workspace = workspaceFromState(state);
+    const sessionId = state.harness?.sessionId;
+    if (!sessionId)
+      throw new restate.TerminalError(
+        "Review feedback cannot be addressed without the implementer session",
+      );
 
-  const review = await dependencies.codingHarness.review({
-    ticket,
-    analysis: state.analysis,
-    workspacePath: workspace.path,
-    diff: inspection.diff,
-    validationSummary: "Defect reproduction and relevant local checks completed",
-    ciStatus: "not started; review is required before publication",
-    sonarFindings,
-  });
+    if (state.reviewAttempt >= state.maxRepairAttempts)
+      throw new restate.TerminalError("Review revision limit reached");
 
-  return {
-    ...review,
-    state: {
-      ...state,
-      statusDetail: review.summary,
-    },
-  };
-}
+    const before = await this.workspaces.inspectChangesSinceBase(workspace);
+    const result = await this.harness.reviseTask(sessionId, {
+      workspacePath: workspace.path,
+      ticketSummary: ticketSummary(ticket),
+      diffSummary: before.diffSummary,
+      review,
+    });
 
-export async function revisePatch(
-  state: BugFixWorkflowState,
-  ticket: NormalizedBugTicket,
-  repository: RepositoryConfig,
-  review: HarnessReviewResult,
-): Promise<BugFixWorkflowState> {
-  const workspace = workspaceFromState(state);
-  const sessionId = state.harness?.sessionId;
-  if (!sessionId)
-    throw new restate.TerminalError(
-      "Review feedback cannot be addressed without the implementer session",
+    const commitSha = await this.commitValidatedPatch(
+      workspace,
+      repository,
+      result,
+      `fix(${ticket.key}): repair review findings`,
     );
 
-  if (state.reviewAttempt >= state.maxRepairAttempts)
-    throw new restate.TerminalError("Review revision limit reached");
+    return {
+      ...state,
+      state: "REVIEWING",
+      reviewAttempt: state.reviewAttempt + 1,
+      currentCommitSha: commitSha,
+      statusDetail: "Review findings addressed; awaiting a fresh independent review",
+    };
+  }
 
-  const before = await dependencies.workspaces.inspectChangesSinceBase(workspace);
-  const result = await dependencies.codingHarness.reviseTask(sessionId, {
-    workspacePath: workspace.path,
-    ticketSummary: ticketSummary(ticket),
-    diffSummary: before.diffSummary,
-    review,
-  });
-
-  const commitSha = await commitValidatedPatch(
-    workspace,
-    repository,
-    result,
-    `fix(${ticket.key}): repair review findings`,
-  );
-
-  return {
-    ...state,
-    state: "REVIEWING",
-    reviewAttempt: state.reviewAttempt + 1,
-    currentCommitSha: commitSha,
-    statusDetail: "Review findings addressed; awaiting a fresh independent review",
-  };
-}
-
-async function commitValidatedPatch(
-  workspace: RepositoryWorkspace,
-  repository: RepositoryConfig,
-  result: HarnessRunResult,
-  message: string,
-): Promise<string> {
-  validateHarnessResult(result);
-  validatePatch(await dependencies.workspaces.inspectPendingChanges(workspace), repository);
-  return await dependencies.workspaces.commitChanges(workspace, message);
+  private async commitValidatedPatch(
+    workspace: RepositoryWorkspace,
+    repository: RepositoryConfig,
+    result: HarnessRunResult,
+    message: string,
+  ): Promise<string> {
+    validateHarnessResult(result);
+    validatePatch(await this.workspaces.inspectPendingChanges(workspace), repository);
+    return await this.workspaces.commitChanges(workspace, message);
+  }
 }
 
 function validateHarnessResult(result: HarnessRunResult): void {

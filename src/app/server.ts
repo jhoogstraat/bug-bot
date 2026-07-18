@@ -3,11 +3,11 @@ import { startWebhookApi } from "./webhook-api.js";
 import { loadEnvironment } from "./environment.js";
 import { createBugFixQueueRestateService } from "../entrypoints/bugfix-queue.restate-service.js";
 import { createJiraWebhookIngressService } from "../entrypoints/jira-webhook.restate-service.js";
-import { dependencies } from "../workflows/bugfix/dependencies.js";
+import { jira } from "../workflows/bugfix/dependencies.js";
 import { BugFixWorkflow } from "../workflows/bugfix/workflow.js";
 
 const env = loadEnvironment();
-const queue = createBugFixQueueRestateService(dependencies.jira, BugFixWorkflow);
+const queue = createBugFixQueueRestateService(jira, BugFixWorkflow);
 const jiraWebhook = createJiraWebhookIngressService(BugFixWorkflow);
 const restateDefinitions = [BugFixWorkflow, queue, jiraWebhook];
 
