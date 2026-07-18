@@ -95,7 +95,7 @@ sequenceDiagram
 
 Jira normalization includes summary, description, acceptance criteria, expected/actual behavior, reproduction steps, environment, affected versions, recent comments, links, attachment metadata/classification, and recent status history. Context is bounded before it reaches a harness. Each investigation writes `ticket-analysis/<KEY>/ANALYSIS.md`; blocked documents include the missing evidence and concrete human action.
 
-The analysis is also stored in durable workflow state so the implementer and fresh reviewer receive the same approved contract. Durable state contains identifiers, repository/workspace/branch, commit SHA, MR reference, analysis, stage, attempts, and compact failure fingerprints—not conversations or raw upstream payloads.
+The journaled investigation result remains a workflow-local value, so the implementer and fresh reviewer receive the same approved analysis contract during normal execution and replay. Workflow progression is owned directly by `workflow.ts`; it is not copied into a separate aggregate state object.
 
 ## Isolation, security, and durability
 

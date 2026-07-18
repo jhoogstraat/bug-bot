@@ -1,15 +1,5 @@
 import * as restate from "@restatedev/restate-sdk";
 import { jira, gitlab, codingHarness, workspaces, actionableRepositoryId } from "./dependencies.js";
-import {
-  done,
-  humanRequired,
-  implementationState,
-  initialState,
-  published,
-  reviewReady,
-  workflowResult,
-  workspaceFromState,
-} from "./workflow-state.js";
 import { normalizeJiraIssue } from "../../integrations/jira/jira-normalizer.js";
 import { AnalysisTask } from "./tasks/analysis.js";
 import { CodingTask } from "./tasks/coding.js";
@@ -17,6 +7,12 @@ import { PublicationTask } from "./tasks/publication.js";
 import { repositoryConfigs, resolveRepository } from "../../app/repository-configs.js";
 
 export const workflowId = (issueKey: string): string => `bugfix/${issueKey}`;
+
+export interface BugFixWorkflowResult {
+  runId: string;
+  state: "DONE" | "HUMAN_REQUIRED";
+  detail: string;
+}
 
 export const BugFixWorkflow = restate.workflow({
   name: "BugFixWorkflow",
@@ -58,19 +54,11 @@ export const BugFixWorkflow = restate.workflow({
       );
 
       if (!investigation.gate.actionable) {
-        const blockedState = humanRequired(
-          initialState(
-            runId,
-            1,
-            ticket,
-            repository,
-            investigationWorkspace,
-            investigation.analysis,
-          ),
-          investigation.gate.reason,
-        );
-
-        return workflowResult(runId, blockedState);
+        return {
+          runId,
+          state: "HUMAN_REQUIRED",
+          detail: investigation.gate.reason,
+        } satisfies BugFixWorkflowResult;
       }
 
       await ctx.run("claim-jira-ticket", () => jira.claimIssue(ticket.key), {
@@ -89,81 +77,79 @@ export const BugFixWorkflow = restate.workflow({
         { maxRetryAttempts: 2 },
       );
 
-      const commitSha = await ctx.run(
+      await ctx.run(
         "validate-and-commit",
         () => codingTask.commitImplementation(workspace, ticket, repository, harnessResult),
         { maxRetryAttempts: 1 },
       );
 
-      let reviewState = implementationState(
-        runId,
-        1,
-        ticket,
-        repository,
-        workspace,
-        investigation.analysis,
-        harnessResult,
-        commitSha,
-      );
-
+      let reviewAttempt = 0;
       for (;;) {
         const review = await ctx.run(
-          `independent-review-${reviewState.reviewAttempt}`,
-          () => codingTask.reviewPatch(reviewState, ticket, []),
+          `independent-review-${reviewAttempt}`,
+          () => codingTask.reviewPatch(workspace, ticket, investigation.analysis, []),
           { maxRetryAttempts: 2 },
         );
 
-        if (review.verdict === "accept") {
-          reviewState = reviewReady(review.state, review.summary);
-          break;
-        }
+        if (review.verdict === "accept") break;
 
         if (review.verdict === "re-investigate") {
-          reviewState = humanRequired(
-            review.state,
-            `Review invalidated the analysis: ${review.summary}`,
-          );
-
-          return workflowResult(runId, reviewState);
+          return {
+            runId,
+            state: "HUMAN_REQUIRED",
+            detail: `Review invalidated the analysis: ${review.summary}`,
+          } satisfies BugFixWorkflowResult;
         }
 
-        reviewState = await ctx.run(
-          `address-review-${reviewState.reviewAttempt + 1}`,
-          () => codingTask.revisePatch(review.state, ticket, repository, review),
+        await ctx.run(
+          `address-review-${reviewAttempt + 1}`,
+          () =>
+            codingTask.revisePatch(
+              workspace,
+              harnessResult.sessionId,
+              reviewAttempt,
+              ticket,
+              repository,
+              review,
+            ),
           { maxRetryAttempts: 1 },
         );
+
+        reviewAttempt++;
       }
 
-      await ctx.run("push-branch", () => workspaces.pushBranch(workspaceFromState(reviewState)), {
+      await ctx.run("push-branch", () => workspaces.pushBranch(workspace), {
         maxRetryAttempts: 3,
       });
 
       const mergeRequest = await ctx.run(
         "create-draft-merge-request",
         () =>
-          publicationTask.createMergeRequest(runId, ticket, repository, reviewState, harnessResult),
+          publicationTask.createMergeRequest(
+            runId,
+            ticket,
+            repository,
+            workspace.branchName,
+            harnessResult,
+          ),
         { maxRetryAttempts: 3 },
-      );
-
-      const readyState = reviewReady(
-        published(reviewState, mergeRequest),
-        "Draft merge request created; merge remains a human action",
       );
 
       await ctx.run(
         "jira-link-merge-request",
-        () => publicationTask.linkMergeRequestInJira(readyState),
+        () => publicationTask.linkMergeRequestInJira(ticket.key, mergeRequest.url),
         { maxRetryAttempts: 3 },
       );
 
-      await ctx.run("jira-ready-to-merge", () => publicationTask.markJiraReadyToMerge(readyState), {
+      await ctx.run("jira-ready-to-merge", () => publicationTask.markJiraReadyToMerge(ticket.key), {
         maxRetryAttempts: 3,
       });
 
-      return workflowResult(
+      return {
         runId,
-        done(readyState, "Ready to merge; merge remains a human action"),
-      );
+        state: "DONE",
+        detail: "Ready to merge; merge remains a human action",
+      } satisfies BugFixWorkflowResult;
     },
   },
 });

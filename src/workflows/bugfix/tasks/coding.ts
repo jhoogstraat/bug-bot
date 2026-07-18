@@ -13,7 +13,6 @@ import type {
   RepositoryWorkspace,
   WorkspaceChanges,
 } from "../../../integrations/git/local-git-workspaces.js";
-import { type BugFixWorkflowState, workspaceFromState } from "../workflow-state.js";
 
 export class CodingTask {
   constructor(
@@ -48,8 +47,8 @@ export class CodingTask {
     ticket: NormalizedBugTicket,
     repository: RepositoryConfig,
     result: HarnessRunResult,
-  ): Promise<string> {
-    return await this.commitValidatedPatch(
+  ): Promise<void> {
+    await this.commitValidatedPatch(
       workspace,
       repository,
       result,
@@ -58,48 +57,33 @@ export class CodingTask {
   }
 
   async reviewPatch(
-    state: BugFixWorkflowState,
+    workspace: RepositoryWorkspace,
     ticket: NormalizedBugTicket,
+    analysis: TicketAnalysis,
     sonarFindings: SonarFinding[],
-  ): Promise<HarnessReviewResult & { state: BugFixWorkflowState }> {
-    const workspace = workspaceFromState(state);
+  ): Promise<HarnessReviewResult> {
     const inspection = await this.workspaces.inspectChangesSinceBase(workspace);
-    if (!state.analysis)
-      throw new restate.TerminalError("Independent review requires the approved analysis");
 
-    const review = await this.harness.review({
+    return await this.harness.review({
       ticket,
-      analysis: state.analysis,
+      analysis,
       workspacePath: workspace.path,
       diff: inspection.diff,
       validationSummary: "Defect reproduction and relevant local checks completed",
       ciStatus: "not started; review is required before publication",
       sonarFindings,
     });
-
-    return {
-      ...review,
-      state: {
-        ...state,
-        statusDetail: review.summary,
-      },
-    };
   }
 
   async revisePatch(
-    state: BugFixWorkflowState,
+    workspace: RepositoryWorkspace,
+    sessionId: string,
+    reviewAttempt: number,
     ticket: NormalizedBugTicket,
     repository: RepositoryConfig,
     review: HarnessReviewResult,
-  ): Promise<BugFixWorkflowState> {
-    const workspace = workspaceFromState(state);
-    const sessionId = state.harness?.sessionId;
-    if (!sessionId)
-      throw new restate.TerminalError(
-        "Review feedback cannot be addressed without the implementer session",
-      );
-
-    if (state.reviewAttempt >= state.maxRepairAttempts)
+  ): Promise<void> {
+    if (reviewAttempt >= repository.limits.maxRepairAttempts)
       throw new restate.TerminalError("Review revision limit reached");
 
     const before = await this.workspaces.inspectChangesSinceBase(workspace);
@@ -110,20 +94,12 @@ export class CodingTask {
       review,
     });
 
-    const commitSha = await this.commitValidatedPatch(
+    await this.commitValidatedPatch(
       workspace,
       repository,
       result,
       `fix(${ticket.key}): repair review findings`,
     );
-
-    return {
-      ...state,
-      state: "REVIEWING",
-      reviewAttempt: state.reviewAttempt + 1,
-      currentCommitSha: commitSha,
-      statusDetail: "Review findings addressed; awaiting a fresh independent review",
-    };
   }
 
   private async commitValidatedPatch(
@@ -131,10 +107,10 @@ export class CodingTask {
     repository: RepositoryConfig,
     result: HarnessRunResult,
     message: string,
-  ): Promise<string> {
+  ): Promise<void> {
     validateHarnessResult(result);
     validatePatch(await this.workspaces.inspectPendingChanges(workspace), repository);
-    return await this.workspaces.commitChanges(workspace, message);
+    await this.workspaces.commitChanges(workspace, message);
   }
 }
 

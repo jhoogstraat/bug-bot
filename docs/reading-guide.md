@@ -42,12 +42,11 @@ Follow this order for an end-to-end mental model. On a first pass, read public t
 2. [`src/entrypoints/bugfix-queue.restate-service.ts`](../src/entrypoints/bugfix-queue.restate-service.ts) — how a Jira filter becomes one immutable, deduplicated batch of independent ticket workflows.
 3. [`src/workflows/bugfix/workflow.ts`](../src/workflows/bugfix/workflow.ts) — the canonical, sequential ticket lifecycle: durable operations, retry policy, branching, and terminal outcomes.
 4. [`src/workflows/bugfix/tasks/coding.ts`](../src/workflows/bugfix/tasks/coding.ts) and [`src/workflows/bugfix/tasks/publication.ts`](../src/workflows/bugfix/tasks/publication.ts) — the cohesive coding, validation, publication, and Jira-handoff operations invoked by the workflow.
-5. [`src/workflows/bugfix/workflow-state.ts`](../src/workflows/bugfix/workflow-state.ts) — the durable state, grouped stage types, construction, and transition helpers.
-6. [`src/workflows/bugfix/tasks/analysis.ts`](../src/workflows/bugfix/tasks/analysis.ts) and [`src/workflows/bugfix/tasks/repair-policy.ts`](../src/workflows/bugfix/tasks/repair-policy.ts) — deterministic confidence and bounded repair policies.
-7. [`src/coding/coding-harness.ts`](../src/coding/coding-harness.ts) — the provider-neutral contract for investigation, implementation, repair, revision, and independent review.
-8. [`src/coding/codex-coding-harness.ts`](../src/coding/codex-coding-harness.ts), [`src/coding/codex-prompts.ts`](../src/coding/codex-prompts.ts), and [`src/coding/codex-result-parser.ts`](../src/coding/codex-result-parser.ts) — how bounded Codex processes receive prompts and return validated structured results.
-9. [`src/integrations/git/local-git-workspaces.ts`](../src/integrations/git/local-git-workspaces.ts) — containment-checked local Git workspaces, branches, validation, commits, and pushes.
-10. [`src/integrations`](../src/integrations) and [`src/entrypoints/jira-webhook.restate-service.ts`](../src/entrypoints/jira-webhook.restate-service.ts) — external API mechanics and delivery of normalized Jira webhook commands.
+5. [`src/workflows/bugfix/tasks/analysis.ts`](../src/workflows/bugfix/tasks/analysis.ts) and [`src/workflows/bugfix/tasks/repair-policy.ts`](../src/workflows/bugfix/tasks/repair-policy.ts) — deterministic confidence and bounded repair policies.
+6. [`src/coding/coding-harness.ts`](../src/coding/coding-harness.ts) — the provider-neutral contract for investigation, implementation, repair, revision, and independent review.
+7. [`src/coding/codex-coding-harness.ts`](../src/coding/codex-coding-harness.ts), [`src/coding/codex-prompts.ts`](../src/coding/codex-prompts.ts), and [`src/coding/codex-result-parser.ts`](../src/coding/codex-result-parser.ts) — how bounded Codex processes receive prompts and return validated structured results.
+8. [`src/integrations/git/local-git-workspaces.ts`](../src/integrations/git/local-git-workspaces.ts) — containment-checked local Git workspaces, branches, validation, commits, and pushes.
+9. [`src/integrations`](../src/integrations) and [`src/entrypoints/jira-webhook.restate-service.ts`](../src/entrypoints/jira-webhook.restate-service.ts) — external API mechanics and delivery of normalized Jira webhook commands.
 
 For a narrower question, jump directly to the matching responsibility below rather than reading every adapter.
 
@@ -73,7 +72,7 @@ For a narrower question, jump directly to the matching responsibility below rath
 - **Per-ticket workflow** — one Restate workflow identified as `bugfix/<ISSUE-KEY>/<generation>`. It owns durable ordering and state for exactly one ticket attempt.
 - **Generation** — an explicit run number that allows a later attempt for the same Jira key without colliding with an earlier workflow.
 - **Journaled operation** — an external or non-deterministic action wrapped in `ctx.run`; Restate records its result so recovery does not blindly repeat completed work.
-- **Durable state** — the compact workflow record containing identifiers, approved analysis, workspace and commit data, MR reference, attempts, and current stage—not full conversations or raw upstream payloads.
+- **Workflow-local progression** — replay-safe local values in `workflow.ts`, reconstructed from journaled operation results rather than copied into a separate aggregate state object.
 - **Durable callback** — a Restate promise resolved later by a Jenkins, SonarQube, or GitLab webhook. Callbacks are correlated to the current repair cycle and commit.
 - **Coding harness** — the provider-neutral interface used for investigation, implementation, repair, revision, and fresh review. Codex is one adapter behind it.
 - **Approved analysis** — the structured investigation result that passed the deterministic gate and becomes the implementation and review contract.

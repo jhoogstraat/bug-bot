@@ -1,10 +1,16 @@
 import type { CompactCiFailure } from "../../../domain/ci.js";
-import type { BugFixWorkflowState } from "../workflow-state.js";
 
 export type RepairDecision = { action: "repair" } | { action: "human_required"; reason: string };
 
+export interface RepairHistory {
+  repairAttempt: number;
+  maxRepairAttempts: number;
+  lastFailureFingerprint?: string;
+  lastCommitAtFailure?: string;
+}
+
 export function decideRepair(
-  state: BugFixWorkflowState,
+  history: RepairHistory,
   failure: CompactCiFailure,
   currentCommitSha: string,
 ): RepairDecision {
@@ -15,12 +21,12 @@ export function decideRepair(
     };
   }
 
-  if (state.repairAttempt >= state.maxRepairAttempts)
+  if (history.repairAttempt >= history.maxRepairAttempts)
     return { action: "human_required", reason: "Maximum repair attempts reached" };
 
   if (
-    state.lastFailureFingerprint === failure.fingerprint &&
-    state.lastCommitAtFailure === currentCommitSha
+    history.lastFailureFingerprint === failure.fingerprint &&
+    history.lastCommitAtFailure === currentCommitSha
   ) {
     return {
       action: "human_required",

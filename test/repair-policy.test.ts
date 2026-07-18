@@ -1,16 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import type { CompactCiFailure } from "../src/domain/ci.js";
-import type { BugFixWorkflowState } from "../src/workflows/bugfix/workflow-state.js";
-import { decideRepair } from "../src/workflows/bugfix/tasks/repair-policy.js";
+import { decideRepair, type RepairHistory } from "../src/workflows/bugfix/tasks/repair-policy.js";
 
-const state: BugFixWorkflowState = {
-  runId: "r",
-  issueKey: "A-1",
-  generation: 1,
-  repository: { id: "r", cloneUrl: "x", defaultBranch: "main" },
-  state: "CI_FAILED",
+const history: RepairHistory = {
   repairAttempt: 0,
-  reviewAttempt: 0,
   maxRepairAttempts: 3,
 };
 
@@ -27,22 +20,22 @@ const failure = (category: CompactCiFailure["category"], fingerprint = "f"): Com
 
 describe("repair policy", () => {
   it("repairs code failures", () =>
-    expect(decideRepair(state, failure("test"), "a").action).toBe("repair"));
+    expect(decideRepair(history, failure("test"), "a").action).toBe("repair"));
 
   it("stops for infrastructure", () =>
-    expect(decideRepair(state, failure("infrastructure"), "a").action).toBe("human_required"));
+    expect(decideRepair(history, failure("infrastructure"), "a").action).toBe("human_required"));
 
   it("stops repeated unchanged failures", () =>
     expect(
       decideRepair(
-        { ...state, lastFailureFingerprint: "f", lastCommitAtFailure: "a" },
+        { ...history, lastFailureFingerprint: "f", lastCommitAtFailure: "a" },
         failure("test"),
         "a",
       ).action,
     ).toBe("human_required"));
 
   it("stops at the repair limit", () =>
-    expect(decideRepair({ ...state, repairAttempt: 3 }, failure("test"), "a").action).toBe(
+    expect(decideRepair({ ...history, repairAttempt: 3 }, failure("test"), "a").action).toBe(
       "human_required",
     ));
 });

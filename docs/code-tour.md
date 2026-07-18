@@ -121,23 +121,9 @@ Journaled operations include:
 
 Adapters should still make mutating requests idempotent where the remote API supports it. Restate protects workflow execution, but it cannot make a non-idempotent third-party endpoint transactional by itself.
 
-### Durable state
+### Workflow-local progression
 
-The workflow restores and saves `BugFixWorkflowState` using `ctx.get` and `ctx.set`. The state contract is defined in [`src/features/bugfix/workflow-state.ts`](../src/features/bugfix/workflow-state.ts).
-
-Durable state includes:
-
-- workflow, ticket, and generation identifiers;
-- repository, workspace, and branch identifiers;
-- base and current commit SHAs;
-- the approved ticket analysis;
-- Codex session;
-- merge-request reference;
-- repair and review attempt counts;
-- compact failure fingerprints;
-- current stage and human-readable status detail.
-
-It does not store the full Codex conversation or unbounded Jira and CI payloads.
+[`src/workflows/bugfix/workflow.ts`](../src/workflows/bugfix/workflow.ts) owns progression directly. Ticket, repository, workspace, analysis, harness result, merge request, and review-attempt values remain local to the handler. Restate reconstructs them during replay from journaled `ctx.run` results, so there is no separate aggregate workflow-state object or transition-helper layer.
 
 ### Durable callback waits
 
@@ -224,16 +210,15 @@ This is the most important file for understanding the end-to-end behavior.
 
 ### Domain contracts
 
-The bugfix data contracts are under [`src/features/bugfix`](../src/features/bugfix):
+The bugfix data contracts live with their real owners:
 
-- `ticket-analysis.ts`: investigation result contract;
-- `ticket.ts`: normalized Jira evidence;
-- `workflow-state.ts`: durable state and callbacks;
-- `coding/coding-harness.ts`: agent task and result contracts;
-- `ci.ts`: compact CI and Sonar evidence;
-- `repository.ts`: repository configuration;
-- `merge-request.ts`: merge-request contract;
-- `errors.ts`: stable domain error categories.
+- [`src/workflows/bugfix/workflow.ts`](../src/workflows/bugfix/workflow.ts): workflow result contract and progression;
+- [`src/domain/ticket-analysis.ts`](../src/domain/ticket-analysis.ts): investigation result contract;
+- [`src/domain/ticket.ts`](../src/domain/ticket.ts): normalized Jira evidence;
+- [`src/coding/coding-harness.ts`](../src/coding/coding-harness.ts): agent task and result contracts;
+- [`src/domain/ci.ts`](../src/domain/ci.ts): compact CI and Sonar evidence;
+- [`src/domain/repository.ts`](../src/domain/repository.ts): repository configuration;
+- [`src/domain/merge-request.ts`](../src/domain/merge-request.ts): merge-request contract.
 
 ## Infrastructure and replaceable adapters
 
@@ -317,7 +302,7 @@ For a first pass through the code, use this order:
 1. [`src/app/server.ts`](../src/app/server.ts) — see how the application is assembled.
 2. [`src/features/bugfix/bugfix-queue.restate-service.ts`](../src/features/bugfix/bugfix-queue.restate-service.ts) — see how filter runs fan out.
 3. [`src/workflows/bugfix/workflow.ts`](../src/workflows/bugfix/workflow.ts) — follow the complete sequential lifecycle.
-4. [`src/workflows/bugfix/tasks`](../src/workflows/bugfix/tasks), [`src/domain/ticket-analysis.ts`](../src/domain/ticket-analysis.ts), and [`src/workflows/bugfix/workflow-state.ts`](../src/workflows/bugfix/workflow-state.ts) — understand operation details, deterministic policy, the analysis contract, and durable state.
+4. [`src/workflows/bugfix/tasks`](../src/workflows/bugfix/tasks) and [`src/domain/ticket-analysis.ts`](../src/domain/ticket-analysis.ts) — understand operation details, deterministic policy, and the approved analysis contract used by the workflow.
 5. [`src/features/bugfix/coding/coding-harness.ts`](../src/features/bugfix/coding/coding-harness.ts) and [`src/features/bugfix/coding/codex-coding-harness.ts`](../src/features/bugfix/coding/codex-coding-harness.ts) — understand the agent boundary.
 6. [`src/features/bugfix/workspace/local-git-workspaces.ts`](../src/features/bugfix/workspace/local-git-workspaces.ts) and [`src/integrations`](../src/integrations) — inspect execution and external-system infrastructure.
 

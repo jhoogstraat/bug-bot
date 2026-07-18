@@ -19,7 +19,7 @@ import type { AnalyzeHarnessTaskInput } from "../src/coding/coding-harness.js";
 import { FakeGitLabClient } from "../src/integrations/gitlab/gitlab-client.js";
 import { LocalGitWorkspaces } from "../src/integrations/git/local-git-workspaces.js";
 import type { RepositoryConfig } from "../src/domain/repository.js";
-import type { BugFixWorkflowResult } from "../src/workflows/bugfix/workflow-state.js";
+import type { BugFixWorkflowResult } from "../src/workflows/bugfix/workflow.js";
 
 const exec = promisify(execFile);
 
