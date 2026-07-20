@@ -10,13 +10,13 @@
 
 ## What
 
-Bug Bot is a durable bug-resolution pipeline. It picks up Jira tickets, investigates the problem, implements a focused fix in an isolated workspace, validates the result, runs an independent review, and opens a draft merge request.
+Bug Bot is a durable bug-resolution pipeline. Given a Jira ticket key and repository, it investigates the problem, implements a focused fix in an isolated workspace, validates the result, runs an independent review, and opens a draft merge request.
 
 It automates the repetitive path to **ready for review**. The final merge always stays with a human.
 
 ## Why
 
-Writing code is only one part of fixing a production bug. The hard part is making the entire process reliable: retries, crashes, stale callbacks, incomplete tickets, scope creep, failed validation, and unsafe handoffs.
+Writing code is only one part of fixing a production bug. The hard part is making the process reliable across retries, crashes, incomplete tickets, scope creep, failed validation, and unsafe handoffs.
 
 Bug Bot wraps the coding agent in deterministic TypeScript and durable Restate orchestration. Completed work survives restarts, side effects stay bounded, and uncertain fixes stop before they can mutate Jira or the repository.
 
@@ -28,9 +28,9 @@ Jira → investigate → confidence gate → isolated branch → implement
 ```
 
 - **Restate** owns durable execution, retries, and workflow identity.
-- **Codex** is a bounded worker for investigation, implementation, repair, and review.
+- **Codex** is a bounded worker for investigation, implementation, revision, and review.
 - **TypeScript** owns policy, validation, integrations, and every irreversible decision.
-- **Jira, GitLab, Jenkins, and SonarQube** remain replaceable adapters around the workflow.
+- **Jira, GitHub, and GitLab** remain external boundaries around the workflow.
 
 No automatic merge. No credentials handed to the coding agent. No forcing low-confidence fixes through the pipeline.
 
@@ -43,13 +43,11 @@ docker compose up -d restate
 bun run dev
 ```
 
-The default setup uses fake Jira, GitLab, and Codex adapters while exercising a real isolated Git workspace. Follow [local development](docs/local-development.md) to register the Restate endpoint and run the complete fake flow.
+The default setup uses fake Jira and Codex adapters while exercising a real isolated Git workspace. Follow [local development](docs/local-development.md) to register the Restate endpoint and run the complete flow.
 
-Use `HARNESS_MODE=codex` for the Codex SDK and `ADAPTER_MODE=real` for HTTP Jira and GitLab adapters.
+Use `HARNESS_MODE=codex` for the Codex SDK and `ADAPTER_MODE=real` for real Jira. Forge access uses authenticated `gh` and `glab` installations.
 
 ## Go deeper
 
 - [Architecture](docs/architecture.md)
-- [Code tour](docs/code-tour.md)
-- [Reading guide](docs/reading-guide.md)
-- [Implementation plan](docs/implementation-plan.md)
+- [Local development](docs/local-development.md)

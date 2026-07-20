@@ -7,17 +7,3 @@ services:
       - "9071:9071"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-
-  bug-bot:
-    build: .
-    profiles: ["app"]
-    environment:
-      PORT: 9080
-      APP_PORT: 3000
-      RESTATE_INGRESS_URL: http://restate:8080
-      ADAPTER_MODE: fake
-      HARNESS_MODE: fake
-      WORKSPACE_ROOT: /tmp/bug-bot-workspaces
-    ports:
-      - "9080:9080"
-      - "3000:3000"

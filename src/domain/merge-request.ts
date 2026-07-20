@@ -1,18 +1,16 @@
-export interface MergeRequest {
-  projectId: string;
-  iid: number;
-  url: string;
-}
+import { z } from "zod";
+
+export const MergeRequest = z.object({
+  id: z.string(),
+  url: z.url()
+})
+
+export type MergeRequest = z.infer<typeof MergeRequest>
 
 export interface CreateMergeRequestInput {
-  idempotencyKey: string;
-  projectId: string;
-  repositoryUrl: string;
+  repositoryPath: string;
   sourceBranch: string;
   targetBranch: string;
   title: string;
   description: string;
-  draft: boolean;
-  assignToCurrentUser: boolean;
-  labels: string[];
 }

@@ -22,7 +22,7 @@ describe("normalizeJiraIssue", () => {
           type: { inward: "blocks", outward: "is blocked by" },
           outwardIssue: { key: `ABC-${index + 2}`, fields: { summary: "Related" } },
         })),
-        attachment: [{ id: "1", filename: "error.log", mimeType: "text/plain" }],
+        attachment: [{ filename: "error.log", mimeType: "text/plain" }],
       },
     };
 
@@ -32,6 +32,6 @@ describe("normalizeJiraIssue", () => {
     expect(result.relevantComments[0]?.body).toBe("comment 2");
     expect(result.linkedIssues).toHaveLength(5);
     expect(result.labels).toEqual(["bug"]);
-    expect(result.attachments[0]?.classification).toBe("log");
+    expect(result.attachments).toEqual([{ filename: "error.log", mimeType: "text/plain" }]);
   });
 });

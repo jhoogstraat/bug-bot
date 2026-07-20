@@ -1,5 +1,3 @@
-export type AttachmentClassification = "log" | "screenshot" | "document" | "unknown";
-
 export interface NormalizedBugTicket {
   key: string;
   summary: string;
@@ -18,15 +16,7 @@ export interface NormalizedBugTicket {
   relevantComments: Array<{ author?: string; createdAt?: string; body: string }>;
   linkedIssues: Array<{ key: string; relationship: string; summary: string }>;
   attachments: Array<{
-    id: string;
     filename: string;
     mimeType?: string;
-    classification: AttachmentClassification;
   }>;
-  repositoryHint?: string;
-}
-
-export interface JiraWebhookEvent {
-  webhookEvent: string;
-  issue: { key: string; fields: { issuetype: { name: string }; status: { name: string } } };
 }

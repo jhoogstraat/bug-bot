@@ -1,17 +1,9 @@
-import type { AttachmentClassification, NormalizedBugTicket } from "../../domain/ticket.js";
-import type { JiraAttachmentDto, JiraIssueDto } from "./jira-types.js";
+import type { NormalizedBugTicket } from "../../domain/ticket.js";
+import type { JiraIssueDto } from "./jira-types.js";
 
-export interface JiraNormalizationLimits {
-  maxComments: number;
-  maxLinkedIssues: number;
-  maxTextCharacters: number;
-}
-
-const defaults: JiraNormalizationLimits = {
-  maxComments: 10,
-  maxLinkedIssues: 5,
-  maxTextCharacters: 12_000,
-};
+const MAX_COMMENTS = 10;
+const MAX_LINKED_ISSUES = 5;
+const MAX_TEXT_CHARACTERS = 12_000;
 
 function plainText(value: unknown, maxCharacters: number): string | undefined {
   if (typeof value === "string") return truncate(stripHtml(value).trim(), maxCharacters);
@@ -21,9 +13,8 @@ function plainText(value: unknown, maxCharacters: number): string | undefined {
     if (typeof node === "string") fragments.push(node);
     else if (Array.isArray(node)) node.forEach(walk);
     else if (node && typeof node === "object") {
-      const record = node as Record<string, unknown>;
-      if (typeof record.text === "string") fragments.push(record.text);
-      else if (record.content) walk(record.content);
+      if ("text" in node && typeof node.text === "string") fragments.push(node.text);
+      else if ("content" in node) walk(node.content);
     }
   };
 
@@ -47,46 +38,30 @@ function truncate(value: string, maxCharacters: number): string {
   return value.slice(0, maxCharacters);
 }
 
-function classifyAttachment(attachment: JiraAttachmentDto): AttachmentClassification {
-  const mime = attachment.mimeType?.toLowerCase() ?? "";
-  const name = attachment.filename.toLowerCase();
-  if (mime.startsWith("image/")) return "screenshot";
-  if (mime.includes("text") || /\.(log|txt|out)$/.test(name)) return "log";
-  if (mime.includes("pdf") || mime.includes("document") || /\.(pdf|docx?)$/.test(name))
-    return "document";
-
-  return "unknown";
-}
-
-export function normalizeJiraIssue(
-  issue: JiraIssueDto,
-  limits: JiraNormalizationLimits = defaults,
-): NormalizedBugTicket {
+export function normalizeJiraIssue(issue: JiraIssueDto): NormalizedBugTicket {
   const fields = issue.fields;
-  const text = (value: unknown): string | undefined => plainText(value, limits.maxTextCharacters);
+  const text = (value: unknown): string | undefined => plainText(value, MAX_TEXT_CHARACTERS);
   const description = text(fields.description);
   const acceptanceCriteria = text(fields.acceptanceCriteria ?? fields.customfield_acceptance);
   const expected = text(fields.expectedBehavior ?? fields.customfield_expected);
   const actual = text(fields.actualBehavior ?? fields.customfield_actual);
   const reproduction = text(fields.reproductionSteps ?? fields.customfield_reproduction);
   const environment = text(fields.environment);
-  const linkedIssues = (fields.issuelinks ?? [])
-    .slice(0, limits.maxLinkedIssues)
-    .flatMap((link) => {
-      const related = link.outwardIssue ?? link.inwardIssue;
-      if (!related) return [];
-      return [
-        {
-          key: related.key,
-          relationship: link.outwardIssue ? link.type.outward : link.type.inward,
-          summary: truncate(related.fields.summary, limits.maxTextCharacters),
-        },
-      ];
-    });
+  const linkedIssues = (fields.issuelinks ?? []).slice(0, MAX_LINKED_ISSUES).flatMap((link) => {
+    const related = link.outwardIssue ?? link.inwardIssue;
+    if (!related) return [];
+    return [
+      {
+        key: related.key,
+        relationship: link.outwardIssue ? link.type.outward : link.type.inward,
+        summary: truncate(related.fields.summary, MAX_TEXT_CHARACTERS),
+      },
+    ];
+  });
 
   return {
     key: issue.key,
-    summary: truncate(fields.summary, limits.maxTextCharacters),
+    summary: truncate(fields.summary, MAX_TEXT_CHARACTERS),
     ...(description ? { description } : {}),
     ...(acceptanceCriteria ? { acceptanceCriteria } : {}),
     ...(expected ? { expectedBehavior: expected } : {}),
@@ -124,7 +99,7 @@ export function normalizeJiraIssue(
       .slice(-20),
     labels: [...new Set(fields.labels ?? [])].slice(0, 20),
     relevantComments: (fields.comment?.comments ?? [])
-      .slice(-limits.maxComments)
+      .slice(-MAX_COMMENTS)
       .map((comment) => ({
         ...(comment.author?.displayName ? { author: comment.author.displayName } : {}),
         ...(comment.created ? { createdAt: comment.created } : {}),
@@ -133,11 +108,8 @@ export function normalizeJiraIssue(
       .filter((comment) => comment.body.length > 0),
     linkedIssues,
     attachments: (fields.attachment ?? []).slice(0, 20).map((attachment) => ({
-      id: attachment.id,
       filename: attachment.filename,
       ...(attachment.mimeType ? { mimeType: attachment.mimeType } : {}),
-      classification: classifyAttachment(attachment),
     })),
-    ...(typeof fields.repositoryHint === "string" ? { repositoryHint: fields.repositoryHint } : {}),
   };
 }

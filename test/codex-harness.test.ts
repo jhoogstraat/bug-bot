@@ -19,19 +19,15 @@ const ticket: NormalizedBugTicket = {
 
 const analysis: TicketAnalysis = {
   issueKey: ticket.key,
-  summary: ticket.summary,
   rootCauseConfidence: "high",
   proposedFixConfidence: "high",
-  issue: "Fixture fails",
   rootCause: "Incorrect fixture",
   proposedFix: "Correct the fixture",
   expectedFiles: ["fixture.ts"],
   nonGoals: [],
   observableBehavior: ["Fixture passes"],
-  jiraEvidence: [],
   repositoryEvidence: [],
   reproductionEvidence: [],
-  complexity: { rating: "low", reasoning: "One file", risks: [] },
   missingInformation: [],
 };
 
@@ -49,8 +45,7 @@ describe("CodexHarness", () => {
             return completedRun({
               status: "completed",
               summary: "Fixed fixture",
-              changedFiles: ["fixture.ts"],
-              validation: { commandsRun: ["bun test"], succeeded: true, failures: [] },
+              validation: { commandsRun: ["bun test"], failures: [] },
             });
           },
         };
@@ -66,7 +61,6 @@ describe("CodexHarness", () => {
       ticket,
       approvedAnalysis: analysis,
       workspacePath: "/workspace/abc-1",
-      limits: { maxAgentTurns: 5, maxChangedFiles: 3, maxExecutionMinutes: 10 },
     });
 
     expect(result).toMatchObject({
@@ -87,7 +81,7 @@ describe("CodexHarness", () => {
     expect(calls[0]?.input).toContain("You are resolving one bug");
     expect(calls[0]?.options?.outputSchema).toMatchObject({
       type: "object",
-      required: ["status", "summary", "changedFiles", "validation"],
+      required: ["status", "summary", "validation"],
     });
   });
 
@@ -105,9 +99,8 @@ describe("CodexHarness", () => {
           run: async () =>
             completedRun({
               status: "completed",
-              summary: "Repaired fixture",
-              changedFiles: ["fixture.ts"],
-              validation: { commandsRun: ["bun test"], succeeded: true, failures: [] },
+              summary: "Revised fixture",
+              validation: { commandsRun: ["bun test"], failures: [] },
             }),
         };
       },
@@ -115,7 +108,7 @@ describe("CodexHarness", () => {
 
     const harness = new CodexHarness(45, client);
 
-    const result = await harness.continueTask("thread-sdk-2", {
+    const result = await harness.reviseTask("thread-sdk-2", {
       workspacePath: "/workspace/abc-1",
       ticketSummary: {
         key: ticket.key,
@@ -123,23 +116,17 @@ describe("CodexHarness", () => {
         expectedBehavior: "Fixture succeeds",
         actualBehavior: "Fixture fails",
       },
-      currentCommitSha: "a".repeat(40),
       diffSummary: "One changed fixture",
-      failure: {
-        provider: "jenkins",
-        buildId: "build-1",
-        fingerprint: "fixture-failure",
-        category: "test",
-        failedTests: [
+      review: {
+        verdict: "revise",
+        summary: "Fix the assertion",
+        findings: [
           {
-            name: "fixture test",
-            message: "expected true, received false",
-            repositoryFrames: [],
+            severity: "blocking",
+            problem: "Assertion is incomplete",
+            correction: "Cover the failure mode",
           },
         ],
-        compilerErrors: [],
-        logExcerpt: "expected true, received false",
-        removedLineCount: 0,
       },
     });
 

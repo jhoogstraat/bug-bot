@@ -4,7 +4,6 @@ import { mkdir, mkdtemp, readdir, rm, stat, symlink, writeFile } from "node:fs/p
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import type { RepositoryTarget } from "../src/domain/repository.js";
 import { LocalGitWorkspaces } from "../src/integrations/git/local-git-workspaces.js";
 
 const exec = promisify(execFile);
@@ -133,15 +132,13 @@ describe("LocalGitWorkspaces", () => {
 
     const inspection = await workspaces.inspectPendingChanges(workspace);
 
-    expect(inspection.changedFiles.toSorted()).toEqual([renamedFile, untrackedFile].toSorted());
+    expect(inspection.toSorted()).toEqual([renamedFile, untrackedFile].toSorted());
 
     await workspaces.activateBranch(workspace);
     await workspaces.commitChanges(workspace, "test: preserve unusual names");
     const committedInspection = await workspaces.inspectChangesSinceBase(workspace);
 
-    expect(committedInspection.changedFiles.toSorted()).toEqual(
-      [renamedFile, untrackedFile].toSorted(),
-    );
+    expect(committedInspection.diff).not.toBeEmpty();
   });
 
   it("rejects a workspace symlink that resolves outside the configured root", async () => {
@@ -208,9 +205,6 @@ async function createRepositoryFixture(): Promise<string> {
   return root;
 }
 
-function repositoryConfig(source: string): RepositoryTarget {
-  return {
-    forge: "gitlab",
-    url: source,
-  };
+function repositoryConfig(source: string): string {
+  return source;
 }

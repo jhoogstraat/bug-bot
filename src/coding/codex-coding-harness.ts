@@ -1,30 +1,25 @@
 import { Codex, type RunResult, type ThreadOptions, type TurnOptions } from "@openai/codex-sdk";
-import type { TicketAnalysis } from "../domain/ticket-analysis.js";
+import { z } from "zod";
+import { ticketAnalysisSchema, type TicketAnalysis } from "../domain/ticket-analysis.js";
 import type {
   AnalyzeHarnessTaskInput,
   CodingHarness,
-  ContinueHarnessTaskInput,
   HarnessReviewResult,
   HarnessRunResult,
   ReviewHarnessTaskInput,
   ReviseHarnessTaskInput,
   StartHarnessTaskInput,
 } from "./coding-harness.js";
+import { harnessReviewResultSchema, harnessRunOutputSchema } from "./coding-harness.js";
 import {
   analysisTaskPrompt,
   initialTaskPrompt,
-  repairTaskPrompt,
   reviewTaskPrompt,
   revisionTaskPrompt,
 } from "./codex-prompts.js";
-import {
-  analysisResultJsonSchema,
-  parseHarnessReviewResult,
-  parseHarnessRunResult,
-  parseTicketAnalysis,
-  reviewResultJsonSchema,
-  runResultJsonSchema,
-} from "./codex-result-parser.js";
+const analysisResultJsonSchema = z.toJSONSchema(ticketAnalysisSchema);
+const runResultJsonSchema = z.toJSONSchema(harnessRunOutputSchema);
+const reviewResultJsonSchema = z.toJSONSchema(harnessReviewResultSchema);
 
 interface CodexThread {
   readonly id: string | null;
@@ -36,18 +31,18 @@ export interface CodexClient {
   resumeThread(id: string, options?: ThreadOptions): CodexThread;
 }
 
-interface InvocationResult {
-  sessionId: string;
-  output: unknown;
-}
-
 export class CodexHarness implements CodingHarness {
   private readonly codex: CodexClient;
 
-  constructor(private readonly timeoutMinutes = 45) {
-    this.codex = new Codex({
-      env: codexEnvironment(),
-    });
+  constructor(
+    private readonly timeoutMinutes = 45,
+    codex?: CodexClient,
+  ) {
+    this.codex =
+      codex ??
+      new Codex({
+        env: codexEnvironment(),
+      });
   }
 
   async analyzeTask(input: AnalyzeHarnessTaskInput): Promise<TicketAnalysis> {
@@ -59,7 +54,7 @@ export class CodexHarness implements CodingHarness {
       true,
     );
 
-    return parseTicketAnalysis(invocation.output);
+    return ticketAnalysisSchema.parse(invocation.output);
   }
 
   async startTask(input: StartHarnessTaskInput): Promise<HarnessRunResult> {
@@ -70,24 +65,7 @@ export class CodexHarness implements CodingHarness {
     );
 
     return {
-      ...parseHarnessRunResult(invocation.output),
-      sessionId: invocation.sessionId,
-    };
-  }
-
-  async continueTask(
-    sessionId: string,
-    input: ContinueHarnessTaskInput,
-  ): Promise<HarnessRunResult> {
-    const invocation = await this.invoke(
-      input.workspacePath,
-      repairTaskPrompt(input),
-      runResultJsonSchema,
-      sessionId,
-    );
-
-    return {
-      ...parseHarnessRunResult(invocation.output),
+      ...harnessRunOutputSchema.parse(invocation.output),
       sessionId: invocation.sessionId,
     };
   }
@@ -101,7 +79,7 @@ export class CodexHarness implements CodingHarness {
     );
 
     return {
-      ...parseHarnessRunResult(invocation.output),
+      ...harnessRunOutputSchema.parse(invocation.output),
       sessionId: invocation.sessionId,
     };
   }
@@ -115,10 +93,7 @@ export class CodexHarness implements CodingHarness {
       true,
     );
 
-    return {
-      ...parseHarnessReviewResult(invocation.output),
-      sessionId: invocation.sessionId,
-    };
+    return harnessReviewResultSchema.parse(invocation.output);
   }
 
   private async invoke(
@@ -127,7 +102,7 @@ export class CodexHarness implements CodingHarness {
     schema: object,
     resumeSessionId?: string,
     readOnly = false,
-  ): Promise<InvocationResult> {
+  ) {
     const options: ThreadOptions = {
       workingDirectory: workspacePath,
       sandboxMode: readOnly ? "read-only" : "workspace-write",

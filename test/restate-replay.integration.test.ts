@@ -13,20 +13,19 @@ import { createEndpointHandler } from "@restatedev/restate-sdk";
 import * as http2 from "node:http2";
 import { FakeJiraClient } from "../src/integrations/jira/jira-client.js";
 import type { JiraIssueDto } from "../src/integrations/jira/jira-types.js";
-import type { createBugFixQueueRestateService } from "../src/entrypoints/bugfix-queue.restate-service.js";
-import type { BugFixWorkflow } from "../src/workflows/bugfix/workflow.js";
 import { FakeCodingHarness } from "../src/coding/fake-coding-harness.js";
 import type { AnalyzeHarnessTaskInput } from "../src/coding/coding-harness.js";
-import { FakeGitLabClient } from "../src/integrations/gitlab/gitlab-client.js";
+import { CLI } from "../src/integrations/forge/cli-runner.js";
+import { GitHubClient } from "../src/integrations/forge/github-client.js";
+import { GitLabClient } from "../src/integrations/forge/gitlab-client.js";
 import { LocalGitWorkspaces } from "../src/integrations/git/local-git-workspaces.js";
-import type { RepositoryTarget } from "../src/domain/repository.js";
 import type {
   BugFixWorkflowInput,
   BugFixWorkflowResult,
-} from "../src/workflows/bugfix/workflow.js";
+} from "../src/workflow/workflow.js";
 
 const exec = promisify(execFile);
-let productionRepository: RepositoryTarget;
+let productionRepository: { forge: "gitlab"; url: string };
 
 const issue: JiraIssueDto = {
   key: "ABC-1",
@@ -34,7 +33,6 @@ const issue: JiraIssueDto = {
     summary: "Replay-safe queue capture",
     description: "Fixture",
     status: { name: "Open" },
-    issuetype: { name: "Bug" },
     components: [],
     labels: [],
     comment: { comments: [] },
@@ -64,31 +62,12 @@ const workflowIssues: JiraIssueDto[] = [
   },
 ];
 
-const queueTarget = restate.workflow({
-  name: "QueueReplayTarget",
-  handlers: {
-    run: async (_ctx: restate.WorkflowContext, input: BugFixWorkflowInput) => input.issueKey,
-  },
-});
-
-let queue: ReturnType<typeof createBugFixQueueRestateService>;
-
 type ProductionWorkflowDefinition = restate.WorkflowDefinition<
   "BugFixWorkflow",
   {
     run: (ctx: restate.WorkflowContext, input: unknown) => Promise<BugFixWorkflowResult>;
   }
 >;
-
-const queueInvoker = restate.service({
-  name: "QueueReplayInvoker",
-  handlers: {
-    run: async (
-      ctx: restate.Context,
-      input: { filterUrl: string; generation: number; forge: "gitlab"; url: string },
-    ) => await ctx.serviceClient(queue).run(input),
-  },
-});
 
 const describeWithRestate = process.env.RUN_RESTATE_TESTS === "1" ? describe : describe.skip;
 
@@ -103,17 +82,10 @@ describeWithRestate("Restate always-replay integration", () => {
     fixtureRoot = fixture.root;
 
     await mock.module("../src/workflows/bugfix/dependencies.js", () => fixture.dependencies);
-    ({ BugFixWorkflow: productionWorkflow } = await import("../src/workflows/bugfix/workflow.js"));
-    const { createBugFixQueueRestateService } =
-      await import("../src/entrypoints/bugfix-queue.restate-service.js");
-
-    queue = createBugFixQueueRestateService(
-      new FakeJiraClient(new Map([[issue.key, issue]])),
-      queueTarget as unknown as typeof BugFixWorkflow,
-    );
+    ({ BugFixWorkflow: productionWorkflow } = await import("../src/workflow/workflow.js"));
 
     environment = await startRestateIntegrationEnvironment({
-      services: [queueTarget, queue, queueInvoker, productionWorkflow],
+      services: [productionWorkflow],
       alwaysReplay: true,
       disableRetries: true,
       storage: "memory",
@@ -127,28 +99,10 @@ describeWithRestate("Restate always-replay integration", () => {
     if (fixtureRoot) await rm(fixtureRoot, { recursive: true, force: true });
   });
 
-  it("replays the production queue handler without re-reading its captured queue", async () => {
-    if (!environment) throw new Error("Restate test environment did not start");
-    const queueResult = await ingress.serviceClient(queueInvoker).run({
-      filterUrl: "https://jira.example.test/issues/?filter=1",
-      generation: 3,
-      forge: "gitlab",
-      url: "https://gitlab.example.test/group/project.git",
-    });
-
-    expect(queueResult.entries).toEqual([{ issueKey: "ABC-1", generation: 3 }]);
-    const workflowResult = await ingress
-      .workflowClient(queueTarget, "bugfix/ABC-1/3")
-      .workflowAttach();
-
-    expect(workflowResult).toBe("ABC-1");
-  });
-
   it("replays the production bugfix workflow", async () => {
     const result = await callProductionWorkflow(ingress, "DEMO-1");
 
     expect(result).toEqual({
-      runId: "bugfix/DEMO-1",
       state: "DONE",
       detail: "Ready to merge; merge remains a human action",
     });
@@ -169,7 +123,7 @@ async function callProductionWorkflow(
     service: "BugFixWorkflow",
     handler: "run",
     key: `bugfix/${issueKey}/1`,
-    parameter: { issueKey, generation: 1, ...productionRepository },
+    parameter: { issueKey, ...productionRepository },
   });
 }
 
@@ -197,7 +151,7 @@ async function createProductionWorkflowFixture() {
   await exec("git", ["remote", "add", "origin", remote], { cwd: seed });
   await exec("git", ["push", "origin", "main"], { cwd: seed });
 
-  const repository: RepositoryTarget = {
+  const repository: { forge: "gitlab"; url: string } = {
     forge: "gitlab",
     url: pathToFileURL(remote).href,
   };
@@ -205,24 +159,41 @@ async function createProductionWorkflowFixture() {
   productionRepository = repository;
 
   const jira = new FakeJiraClient(new Map(workflowIssues.map((item) => [item.key, item])));
+  const forgeCli = new ReplayForgeCliRunner();
 
   return {
     root,
     repository,
     dependencies: {
       jira,
-      forges: { github: new FakeGitLabClient(), gitlab: new FakeGitLabClient() },
+      forges: {
+        github: new GitHubClient(forgeCli),
+        gitlab: new GitLabClient(forgeCli),
+      },
       codingHarness: new ReplayCodingHarness(),
       workspaces: new LocalGitWorkspaces(join(root, "workspaces")),
-      trustedRepositoryUrlPrefixes: [repository.url],
+      allowList: [repository.url],
       limits: {
-        maxAgentTurns: 5,
         maxChangedFiles: 5,
         maxRepairAttempts: 2,
-        maxExecutionMinutes: 5,
       },
     },
   };
+}
+
+class ReplayForgeCliRunner extends CLI {
+  private created = false;
+
+  override async run(_executable: string, args: readonly string[]): Promise<string> {
+    if (args[1] === "create") {
+      this.created = true;
+      return "https://gitlab.example/bug-bot/-/merge_requests/1\n";
+    }
+
+    return this.created
+      ? '[{"web_url":"https://gitlab.example/bug-bot/-/merge_requests/1"}]'
+      : "[]";
+  }
 }
 
 interface RestateIntegrationEnvironment {
