@@ -1,0 +1,36 @@
+[server]
+port = 9080
+
+[restate]
+# Leave empty only for local development on a private network.
+identity_keys = []
+
+[jira]
+mode = "fake"
+# Required when mode = "real". Supply the token through JIRA_TOKEN.
+# base_url = "https://example.atlassian.net"
+
+[coding]
+provider = "fake"
+timeout_minutes = 45
+
+[workspace]
+root = ".bug-bot-workspaces"
+# Every submitted repository URL must start with one of these prefixes.
+trusted_repository_url_prefixes = [
+  "https://github.com/example/",
+  "https://gitlab.example.com/example/",
+]
+
+[ci]
+provider = "fake"
+check_name = "build"
+poll_interval_minutes = 5
+max_poll_attempts = 72
+# Required when provider = "jenkins". Supply credentials through
+# JENKINS_USERNAME and JENKINS_API_KEY.
+# base_url = "https://jenkins.example.com"
+
+[limits]
+max_changed_files = 15
+max_repair_attempts = 3

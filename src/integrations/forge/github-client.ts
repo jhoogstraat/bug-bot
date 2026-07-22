@@ -1,18 +1,35 @@
-import { MergeRequest } from "../../domain/merge-request.js";
+import { z } from "zod";
 import { CLI } from "./cli-runner.js";
-import { CreateMergeRequestInput, WaitForChecksOutput } from "./forge.js";
+import type { CreateMergeRequestInput, CiCheck, ForgeClient, WaitForChecksInput } from "./forge.js";
 
-export class GitHubClient {
+const GitHubCheckRuns = z.object({
+  check_runs: z.array(
+    z.object({
+      name: z.string(),
+      status: z.string(),
+      conclusion: z.string().nullable(),
+      details_url: z.url().nullable(),
+    }),
+  ),
+});
+
+export class GitHubClient implements ForgeClient {
   constructor(private readonly gh: CLI) {}
 
-  async createMergeRequest(input: CreateMergeRequestInput): Promise<MergeRequest> {
-    const existing = await this.gh.run(["pr", "view", "--json"], input.repositoryPath);
-    if (existing.exitCode == 0) throw Error("PR already exists");
+  async createMergeRequest(input: CreateMergeRequestInput) {
+    const existing = await this.gh.run(
+      ["pr", "view", "--json", "number,url"],
+      input.repositoryPath,
+    );
 
-    await this.gh.run(
+    if (existing.exitCode === 0) return;
+
+    const created = await this.gh.run(
       [
         "pr",
         "create",
+        "--head",
+        input.sourceBranch,
         "--base",
         input.targetBranch,
         "--title",
@@ -28,26 +45,33 @@ export class GitHubClient {
       input.repositoryPath,
     );
 
-    const pr = await this.gh.run(
-      ["pr", "view", "--json", "number,title,url,state,author"],
+    if (created.exitCode !== 0)
+      throw new Error(`gh failed to create pull request: ${created.stderr}`);
+  }
+
+  async waitForChecks(input: WaitForChecksInput): Promise<CiCheck> {
+    const result = await this.gh.run(
+      ["api", `repos/{owner}/{repo}/commits/${encodeURIComponent(input.commitSha)}/check-runs`],
       input.repositoryPath,
     );
 
-    if (pr.exitCode != 0) throw new Error("gh created a pull request that could not be resolved");
+    if (result.exitCode !== 0)
+      throw new Error(`gh failed to fetch commit checks: ${result.stderr}`);
 
-    return MergeRequest.parse(JSON.parse(pr.stdout));
-  }
+    const check = GitHubCheckRuns.parse(JSON.parse(result.stdout)).check_runs.find(
+      (candidate) => candidate.name === input.checkName,
+    );
 
-  async waitForChecks(
-    commit: string,
-    name: string,
-    repositoryPath: string,
-  ): Promise<WaitForChecksOutput> {
-    const result = await this.gh.run(["pr", "checks", "--watch", "--fail-fast"], repositoryPath);
+    if (!check || check.status !== "completed") return { state: "pending", targetUrl: null };
 
     return {
-      targetUrl: null,
-      success: result.exitCode == 0,
+      state:
+        check.conclusion === "success"
+          ? "passed"
+          : check.conclusion === "failure" || check.conclusion === "timed_out"
+            ? "failed"
+            : "canceled",
+      targetUrl: check.details_url,
     };
   }
 }

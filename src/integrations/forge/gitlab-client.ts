@@ -1,19 +1,29 @@
-import z from "zod";
-import { MergeRequest } from "../../domain/merge-request.js";
+import { z } from "zod";
 import { CLI } from "./cli-runner.js";
-import { CreateMergeRequestInput, WaitForChecksOutput } from "./forge.js";
+import type { CreateMergeRequestInput, CiCheck, ForgeClient, WaitForChecksInput } from "./forge.js";
 
-export class GitLabClient {
+const CommitStatusesResponse = z
+  .object({
+    name: z.string().nullish(),
+    target_url: z.url().nullish(),
+    status: z.string(),
+    sha: z.string().nullish(),
+  })
+  .array();
+
+export class GitLabClient implements ForgeClient {
   constructor(private readonly glab: CLI) {}
 
-  async createMergeRequest(input: CreateMergeRequestInput): Promise<MergeRequest> {
+  async createMergeRequest(input: CreateMergeRequestInput) {
     const existing = await this.glab.run(["mr", "view", "--output", "json"], input.repositoryPath);
-    if (existing.exitCode == 0) throw Error("MR already exists");
+    if (existing.exitCode === 0) return;
 
-    await this.glab.run(
+    const created = await this.glab.run(
       [
         "mr",
         "create",
+        "--source-branch",
+        input.sourceBranch,
         "--target-branch",
         input.targetBranch,
         "--title",
@@ -31,51 +41,49 @@ export class GitLabClient {
       input.repositoryPath,
     );
 
-    const result = await this.glab.run(["mr", "view", "--output", "json"], input.repositoryPath);
-    if (result.exitCode != 0) {
-      throw new Error("glab created a merge request that could not be resolved");
-    }
-
-    return MergeRequest.parse(JSON.parse(result.stderr));
+    if (created.exitCode !== 0)
+      throw new Error(`glab failed to create merge request: ${created.stderr}`);
   }
 
-  async waitForChecks(
-    commit: string,
-    name: string,
-    repositoryPath: string,
-  ): Promise<WaitForChecksOutput> {
-    await this.glab.run(["ci", "status", "--wait"], repositoryPath);
+  async waitForChecks(input: WaitForChecksInput): Promise<CiCheck> {
+    const query = new URLSearchParams({
+      name: input.checkName,
+      all: "true",
+      sort: "desc",
+      order_by: "id",
+    });
 
-    const result = await this.glab.run(
-      ["api", `projects/:id/repository/commits/${commit}/statuses?all=true&sort=desc&order_by=id`],
-      repositoryPath,
+    const statusResult = await this.glab.run(
+      [
+        "api",
+        `projects/:id/repository/commits/${encodeURIComponent(input.commitSha)}/statuses?${query.toString()}`,
+      ],
+      input.repositoryPath,
     );
 
-    if (result.exitCode != 0) {
-      throw new Error("glab failed to fetch commit statuses");
+    if (statusResult.exitCode !== 0) {
+      throw new Error(`glab failed to fetch commit statuses: ${statusResult.stderr}`);
     }
 
-    const statuses = CommitStatusesResponse.parse(JSON.parse(result.stdout));
+    const status = CommitStatusesResponse.parse(JSON.parse(statusResult.stdout)).find(
+      (candidate) => candidate.name === input.checkName,
+    );
 
-    // list sorted desc by monotonous id, latest comes first.
-    const target = statuses.find((status) => status.name == name);
-
-    if (!target) {
-      throw new Error("glab failed to find check with name");
+    if (!status) return { state: "pending", targetUrl: null };
+    if (status.sha && status.sha !== input.commitSha) {
+      throw new Error("glab returned a status for a different commit");
     }
 
     return {
-      targetUrl: target.target_url,
-      success: target.status == "success",
+      state: mapGitLabStatus(status.status),
+      targetUrl: status.target_url ?? null,
     };
   }
 }
 
-const CommitStatusesResponse = z
-  .object({
-    name: z.string().nullish(),
-    pipeline_id: z.int().nullish(),
-    target_url: z.url().nullish(),
-    status: z.string(),
-  })
-  .array();
+function mapGitLabStatus(status: string): CiCheck["state"] {
+  if (status === "success") return "passed";
+  if (status === "failed") return "failed";
+  if (["canceled", "canceling", "skipped", "manual"].includes(status)) return "canceled";
+  return "pending";
+}

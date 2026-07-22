@@ -1,13 +1,17 @@
 import * as restate from "@restatedev/restate-sdk";
-import { loadEnvironment } from "./environment.js";
-import { BugFixWorkflow } from "../workflow/workflow.js";
+import { loadConfiguration } from "./configuration.js";
+import { createProductionDependencies } from "../workflow/dependencies.js";
+import { createBugFixWorkflow } from "../workflow/workflow.js";
 
-const env = loadEnvironment();
+const configuration = await loadConfiguration();
+const workflow = createBugFixWorkflow(createProductionDependencies(configuration));
 
 const port = await restate.serve({
-  services: [BugFixWorkflow],
-  port: env.PORT,
-  ...(env.RESTATE_IDENTITY_KEYS ? { identityKeys: env.RESTATE_IDENTITY_KEYS } : {}),
+  services: [workflow],
+  port: configuration.server.port,
+  ...(configuration.restate.identityKeys.length > 0
+    ? { identityKeys: configuration.restate.identityKeys }
+    : {}),
 });
 
 console.log(
@@ -15,8 +19,9 @@ console.log(
     level: "info",
     event: "server.started",
     port,
-    adapterMode: env.ADAPTER_MODE,
-    harnessMode: env.HARNESS_MODE,
+    jiraMode: configuration.jira.mode,
+    codingProvider: configuration.coding.provider,
+    ciProvider: configuration.ci.provider,
     runtime: "bun",
     transport: "restate-http2",
   }),

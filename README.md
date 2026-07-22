@@ -37,6 +37,8 @@ No automatic merge. No credentials handed to the coding agent. No forcing low-co
 ## Quick start
 
 ```bash
+cp bug-bot.example.toml bug-bot.toml
+cp .env.example .env
 bun install
 bun run check
 docker compose up -d restate
@@ -45,7 +47,10 @@ bun run dev
 
 The default setup uses fake Jira and Codex adapters while exercising a real isolated Git workspace. Follow [local development](docs/local-development.md) to register the Restate endpoint and run the complete flow.
 
-Use `HARNESS_MODE=codex` for the Codex SDK and `ADAPTER_MODE=real` for real Jira. Forge access uses authenticated `gh` and `glab` installations.
+Application settings live in the structured `bug-bot.toml` file. Select the `codex` coding
+provider, real Jira mode, or the Jenkins CI provider to enable the corresponding integrations.
+Jira and Jenkins credentials remain in `.env`; forge access uses authenticated `gh` and `glab`
+installations.
 
 ## Go deeper
 

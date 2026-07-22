@@ -62,20 +62,11 @@ export class LocalGitWorkspaces {
     assertChildPath(root.logical, workspacePath, "Workspace path escaped its configured root");
     await assertValidBranchName(branchName);
 
-    try {
-      if (await pathExists(workspacePath)) {
-        return await this.loadExistingWorkspace(workspacePath, branchName, url);
-      }
-
-      return await this.cloneWorkspaceAtomically(root, workspacePath, branchName, url, suffix);
-    } catch (error) {
-      throw new Error(
-        `Could not create workspace: ${error instanceof Error ? error.message : String(error)}`,
-        {
-          cause: error,
-        },
-      );
+    if (await pathExists(workspacePath)) {
+      return this.loadExistingWorkspace(workspacePath, branchName, url);
     }
+
+    return this.cloneWorkspaceAtomically(root, workspacePath, branchName, url, suffix);
   }
 
   async activateBranch(workspace: RepositoryWorkspace): Promise<void> {
@@ -120,24 +111,12 @@ export class LocalGitWorkspaces {
       maxBuffer: 64_000,
     });
 
-    const revisions = [workspace.baseCommitSha, "HEAD", "--"];
-    const [diff, summary] = await Promise.all([
-      runGit(["diff", "--no-ext-diff", "--no-textconv", ...revisions], {
-        cwd,
-        maxBuffer: DIFF_MAX_BUFFER_BYTES,
-        timeout: GIT_READ_TIMEOUT_MS,
-      }),
-      runGit(["diff", "--stat", "--no-ext-diff", ...revisions], {
-        cwd,
-        maxBuffer: 1_000_000,
-        timeout: GIT_READ_TIMEOUT_MS,
-      }),
-    ]);
+    const { stdout } = await runGit(
+      ["diff", "--no-ext-diff", "--no-textconv", workspace.baseCommitSha, "HEAD", "--"],
+      { cwd, maxBuffer: DIFF_MAX_BUFFER_BYTES, timeout: GIT_READ_TIMEOUT_MS },
+    );
 
-    return {
-      diff: diff.stdout,
-      diffSummary: summary.stdout,
-    };
+    return stdout;
   }
 
   async commitChanges(workspace: RepositoryWorkspace, message: string): Promise<void> {

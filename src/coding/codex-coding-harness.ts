@@ -4,6 +4,7 @@ import { ticketAnalysisSchema, type TicketAnalysis } from "../domain/ticket-anal
 import type {
   AnalyzeHarnessTaskInput,
   CodingHarness,
+  ContinueHarnessTaskInput,
   HarnessReviewResult,
   HarnessRunResult,
   ReviewHarnessTaskInput,
@@ -13,6 +14,7 @@ import type {
 import { harnessReviewResultSchema, harnessRunOutputSchema } from "./coding-harness.js";
 import {
   analysisTaskPrompt,
+  ciRepairTaskPrompt,
   initialTaskPrompt,
   reviewTaskPrompt,
   revisionTaskPrompt,
@@ -20,6 +22,18 @@ import {
 const analysisResultJsonSchema = z.toJSONSchema(ticketAnalysisSchema);
 const runResultJsonSchema = z.toJSONSchema(harnessRunOutputSchema);
 const reviewResultJsonSchema = z.toJSONSchema(harnessReviewResultSchema);
+const CODEX_ENVIRONMENT_VARIABLES = [
+  "CODEX_HOME",
+  "HOME",
+  "HTTPS_PROXY",
+  "HTTP_PROXY",
+  "NO_PROXY",
+  "OPENAI_API_KEY",
+  "PATH",
+  "SSL_CERT_DIR",
+  "SSL_CERT_FILE",
+  "TMPDIR",
+] as const;
 
 interface CodexThread {
   readonly id: string | null;
@@ -74,6 +88,23 @@ export class CodexHarness implements CodingHarness {
     const invocation = await this.invoke(
       input.workspacePath,
       revisionTaskPrompt(input),
+      runResultJsonSchema,
+      sessionId,
+    );
+
+    return {
+      ...harnessRunOutputSchema.parse(invocation.output),
+      sessionId: invocation.sessionId,
+    };
+  }
+
+  async continueTask(
+    sessionId: string,
+    input: ContinueHarnessTaskInput,
+  ): Promise<HarnessRunResult> {
+    const invocation = await this.invoke(
+      input.workspacePath,
+      ciRepairTaskPrompt(input),
       runResultJsonSchema,
       sessionId,
     );
@@ -139,16 +170,13 @@ export class CodexHarness implements CodingHarness {
   }
 }
 
-function codexEnvironment(): Record<string, string> {
+export function codexEnvironment(
+  source: Record<string, string | undefined> = process.env,
+): Record<string, string> {
   const environment: Record<string, string> = {};
-  for (const [name, value] of Object.entries(process.env)) {
-    if (
-      value !== undefined &&
-      name !== "JIRA_TOKEN" &&
-      name !== "GITLAB_TOKEN" &&
-      name !== "GITHUB_TOKEN"
-    )
-      environment[name] = value;
+  for (const name of CODEX_ENVIRONMENT_VARIABLES) {
+    const value = source[name];
+    if (value !== undefined) environment[name] = value;
   }
 
   return environment;

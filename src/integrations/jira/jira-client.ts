@@ -2,12 +2,17 @@ import { z } from "zod";
 import { jiraIssueSchema, type JiraIssueDto } from "./jira-types.js";
 
 const currentUserSchema = z.object({ accountId: z.string() });
-const remoteLinksSchema = z.array(z.object({ globalId: z.string().optional() }));
 const transitionsSchema = z.object({
   transitions: z.array(z.object({ id: z.string(), name: z.string() })),
 });
 
-export class HttpJiraClient {
+export interface JiraClient {
+  fetchIssue(issueKey: string): Promise<JiraIssueDto>;
+  claimIssue(issueKey: string): Promise<void>;
+  transition(issueKey: string, targetName: string): Promise<void>;
+}
+
+export class HttpJiraClient implements JiraClient {
   constructor(
     private readonly baseUrl: string,
     private readonly token: string,
@@ -40,7 +45,7 @@ export class HttpJiraClient {
     await this.transition(issueKey, "In Progress");
   }
 
-   async transition(issueKey: string, targetName: string): Promise<void> {
+  async transition(issueKey: string, targetName: string): Promise<void> {
     const issue = await this.fetchIssue(issueKey);
     if (issue.fields.status.name.toLowerCase() === targetName.toLowerCase()) return;
     const url = new URL(
@@ -75,7 +80,7 @@ export class HttpJiraClient {
   }
 }
 
-export class FakeJiraClient {
+export class FakeJiraClient implements JiraClient {
   constructor(private readonly issues: ReadonlyMap<string, JiraIssueDto>) {}
 
   async fetchIssue(issueKey: string): Promise<JiraIssueDto> {

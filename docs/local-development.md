@@ -6,17 +6,37 @@
 - Git
 - Docker or Apple container for the Restate replay test
 - Authenticated `gh` and/or `glab` for the submitted forge
-- Codex authentication when `HARNESS_MODE=codex`
+- Codex authentication when `coding.provider = "codex"`
 
 ## Setup
 
 ```bash
+cp bug-bot.example.toml bug-bot.toml
 cp .env.example .env
 bun install
 bun run check
 ```
 
-Fake Jira and the fake coding harness are the defaults. Set `ADAPTER_MODE=real` with `JIRA_BASE_URL` and `JIRA_TOKEN` for Jira, or `HARNESS_MODE=codex` for Codex. Every repository URL must start with one of the comma-separated `TRUSTED_REPOSITORY_URL_PREFIXES`.
+`bug-bot.toml` contains non-secret application settings grouped by component. Bun parses it
+natively and the service validates the complete file before startup. Fake Jira, CI feedback, and
+coding harnesses are the defaults. Set `jira.mode = "real"`, `ci.provider = "jenkins"`, or
+`coding.provider = "codex"` to enable the corresponding integration. Every repository URL must
+start with one of the entries in `workspace.trusted_repository_url_prefixes`.
+
+The tables have the following responsibilities:
+
+- `server`: HTTP port exposed to Restate.
+- `restate`: request identity verification keys.
+- `jira`: fake or real Jira selection and the real Jira base URL.
+- `coding`: fake or Codex harness selection and its timeout.
+- `workspace`: local workspace root and trusted repository URL prefixes.
+- `ci`: fake or Jenkins feedback selection, check name, and polling policy.
+- `limits`: changed-file and repair budgets enforced by the workflow.
+
+Keep secrets in `.env`: real Jira requires `JIRA_TOKEN`; Jenkins requires `JENKINS_USERNAME` and
+`JENKINS_API_KEY`. Set `BUG_BOT_CONFIG` to load a file other than `./bug-bot.toml`. Relative paths
+are resolved from the current working directory. Configuration is immutable after startup, and
+unknown or invalid fields stop the service with the failing path identified.
 
 ## Run
 
@@ -35,13 +55,12 @@ curl -X POST http://localhost:9070/deployments \
 
 `BugFixWorkflow` accepts `{ issueKey, forge, url }`. The bundled fake Jira contains `DEMO-1`; the repository must still be a real Git remote because workspace and forge operations are intentionally not faked.
 
-Set `RESTATE_IDENTITY_KEYS` to comma-separated `publickeyv1_*` values when the endpoint is not restricted to a private network.
+Set `restate.identity_keys` to an array of `publickeyv1_*` values when the endpoint is not restricted
+to a private network.
 
 ## Verification
 
 ```bash
 bun run check
 bun run test:restate
-# On macOS with Apple container:
-bun run test:restate:apple
 ```
