@@ -6,7 +6,7 @@ export interface CommandResult {
 }
 
 export class CLI {
-  constructor(private readonly executable: string) { }
+  constructor(private readonly executable: string) {}
 
   async run(args: string[], cwd: string, timeoutMs = 30 * 60_000): Promise<CommandResult> {
     const child = Bun.spawn({
@@ -21,7 +21,7 @@ export class CLI {
         GIT_TERMINAL_PROMPT: "0",
         GH_PROMPT_DISABLED: "1",
       },
-      cwd: cwd
+      cwd: cwd,
     });
 
     // Consume both streams concurrently to avoid blocking on full buffers.

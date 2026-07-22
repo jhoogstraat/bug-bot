@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it, mock } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
@@ -15,14 +15,11 @@ import { FakeJiraClient } from "../src/integrations/jira/jira-client.js";
 import type { JiraIssueDto } from "../src/integrations/jira/jira-types.js";
 import { FakeCodingHarness } from "../src/coding/fake-coding-harness.js";
 import type { AnalyzeHarnessTaskInput } from "../src/coding/coding-harness.js";
-import { CLI } from "../src/integrations/forge/cli-runner.js";
-import { GitHubClient } from "../src/integrations/forge/github-client.js";
-import { GitLabClient } from "../src/integrations/forge/gitlab-client.js";
+import type { CiFeedbackReader } from "../src/domain/ci.js";
+import type { ForgeClient } from "../src/integrations/forge/forge.js";
 import { LocalGitWorkspaces } from "../src/integrations/git/local-git-workspaces.js";
-import type {
-  BugFixWorkflowInput,
-  BugFixWorkflowResult,
-} from "../src/workflow/workflow.js";
+import type { BugFixWorkflowInput, BugFixWorkflowResult } from "../src/workflow/workflow.js";
+import { createBugFixWorkflow } from "../src/workflow/workflow.js";
 
 const exec = promisify(execFile);
 let productionRepository: { forge: "gitlab"; url: string };
@@ -60,6 +57,15 @@ const workflowIssues: JiraIssueDto[] = [
       components: [{ name: "Bug Bot" }],
     },
   },
+  {
+    ...issue,
+    key: "REPAIR-1",
+    fields: {
+      ...issue.fields,
+      summary: "Repair a failed CI build under replay",
+      components: [{ name: "Bug Bot" }],
+    },
+  },
 ];
 
 type ProductionWorkflowDefinition = restate.WorkflowDefinition<
@@ -81,8 +87,7 @@ describeWithRestate("Restate always-replay integration", () => {
     const fixture = await createProductionWorkflowFixture();
     fixtureRoot = fixture.root;
 
-    await mock.module("../src/workflows/bugfix/dependencies.js", () => fixture.dependencies);
-    ({ BugFixWorkflow: productionWorkflow } = await import("../src/workflow/workflow.js"));
+    productionWorkflow = createBugFixWorkflow(fixture.dependencies);
 
     environment = await startRestateIntegrationEnvironment({
       services: [productionWorkflow],
@@ -101,6 +106,15 @@ describeWithRestate("Restate always-replay integration", () => {
 
   it("replays the production bugfix workflow", async () => {
     const result = await callProductionWorkflow(ingress, "DEMO-1");
+
+    expect(result).toEqual({
+      state: "DONE",
+      detail: "Ready to merge; merge remains a human action",
+    });
+  });
+
+  it("replays a failed CI repair through a fresh commit and passing check", async () => {
+    const result = await callProductionWorkflow(ingress, "REPAIR-1");
 
     expect(result).toEqual({
       state: "DONE",
@@ -159,7 +173,7 @@ async function createProductionWorkflowFixture() {
   productionRepository = repository;
 
   const jira = new FakeJiraClient(new Map(workflowIssues.map((item) => [item.key, item])));
-  const forgeCli = new ReplayForgeCliRunner();
+  const forge = new ReplayForge();
 
   return {
     root,
@@ -167,32 +181,48 @@ async function createProductionWorkflowFixture() {
     dependencies: {
       jira,
       forges: {
-        github: new GitHubClient(forgeCli),
-        gitlab: new GitLabClient(forgeCli),
+        github: forge,
+        gitlab: forge,
       },
       codingHarness: new ReplayCodingHarness(),
+      ciFeedbackReader: new ReplayCiFeedbackReader(),
       workspaces: new LocalGitWorkspaces(join(root, "workspaces")),
       allowList: [repository.url],
       limits: {
         maxChangedFiles: 5,
         maxRepairAttempts: 2,
+        ciCheckName: "build",
+        ciPollIntervalMinutes: 1,
+        maxCiPollAttempts: 1,
       },
     },
   };
 }
 
-class ReplayForgeCliRunner extends CLI {
-  private created = false;
+class ReplayForge implements ForgeClient {
+  private readonly firstRepairCommitByWorkspace = new Map<string, string>();
 
-  override async run(_executable: string, args: readonly string[]): Promise<string> {
-    if (args[1] === "create") {
-      this.created = true;
-      return "https://gitlab.example/bug-bot/-/merge_requests/1\n";
+  async createMergeRequest() {}
+
+  async waitForChecks(input: { repositoryPath: string; commitSha: string }) {
+    if (input.repositoryPath.includes("repair-1")) {
+      const firstCommit = this.firstRepairCommitByWorkspace.get(input.repositoryPath);
+      if (!firstCommit) {
+        this.firstRepairCommitByWorkspace.set(input.repositoryPath, input.commitSha);
+        return {
+          state: "failed" as const,
+          targetUrl: "https://jenkins.example/job/repair-1/1/",
+        };
+      }
     }
 
-    return this.created
-      ? '[{"web_url":"https://gitlab.example/bug-bot/-/merge_requests/1"}]'
-      : "[]";
+    return { state: "passed" as const, targetUrl: null };
+  }
+}
+
+class ReplayCiFeedbackReader implements CiFeedbackReader {
+  async readFailure(buildUrl: string) {
+    return { buildUrl, logExcerpt: "Fixture Jenkins failure" };
   }
 }
 

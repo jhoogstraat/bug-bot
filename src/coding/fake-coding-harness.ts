@@ -1,10 +1,10 @@
-import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { TicketAnalysis } from "../domain/ticket-analysis.js";
 import type {
   AnalyzeHarnessTaskInput,
   CodingHarness,
+  ContinueHarnessTaskInput,
   HarnessReviewResult,
   HarnessRunResult,
   ReviewHarnessTaskInput,
@@ -13,6 +13,7 @@ import type {
 } from "./coding-harness.js";
 
 export class FakeCodingHarness implements CodingHarness {
+  private ciRepairCount = 0;
   private revisionCount = 0;
 
   async analyzeTask(input: AnalyzeHarnessTaskInput): Promise<TicketAnalysis> {
@@ -41,7 +42,7 @@ export class FakeCodingHarness implements CodingHarness {
     );
 
     return {
-      sessionId: randomUUID(),
+      sessionId: `fake-session-${input.ticket.key}`,
       status: "completed",
       summary: "Fake harness produced a focused change",
       validation: { commandsRun: ["fake:test"], failures: [] },
@@ -55,6 +56,20 @@ export class FakeCodingHarness implements CodingHarness {
       sessionId,
       status: "completed",
       summary: "Fake review findings addressed",
+      validation: { commandsRun: ["fake:test"], failures: [] },
+    };
+  }
+
+  async continueTask(
+    sessionId: string,
+    input: ContinueHarnessTaskInput,
+  ): Promise<HarnessRunResult> {
+    const relative = `.bug-bot/ci-repair-${++this.ciRepairCount}.txt`;
+    await writeFile(join(input.workspacePath, relative), "Simulated CI repair\n", "utf8");
+    return {
+      sessionId,
+      status: "completed",
+      summary: "Fake harness addressed supplied CI evidence",
       validation: { commandsRun: ["fake:test"], failures: [] },
     };
   }

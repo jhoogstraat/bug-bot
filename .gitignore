@@ -2,6 +2,7 @@ node_modules/
 dist/
 coverage/
 .env
+bug-bot.toml
 .DS_Store
 .bug-bot-workspaces/
 *.log

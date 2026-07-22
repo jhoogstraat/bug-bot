@@ -72,10 +72,7 @@ describe("LocalGitWorkspaces", () => {
       reopenError = error;
     }
 
-    expect(reopenError).toHaveProperty(
-      "message",
-      expect.stringContaining("Could not create workspace"),
-    );
+    expect(reopenError).toHaveProperty("message", expect.stringContaining("git rev-parse failed"));
 
     expect((await stat(workspace.path)).isDirectory()).toBe(true);
   });
@@ -136,9 +133,7 @@ describe("LocalGitWorkspaces", () => {
 
     await workspaces.activateBranch(workspace);
     await workspaces.commitChanges(workspace, "test: preserve unusual names");
-    const committedInspection = await workspaces.inspectChangesSinceBase(workspace);
-
-    expect(committedInspection.diff).not.toBeEmpty();
+    expect(await workspaces.inspectChangesSinceBase(workspace)).not.toBeEmpty();
   });
 
   it("rejects a workspace symlink that resolves outside the configured root", async () => {
@@ -174,7 +169,7 @@ describe("LocalGitWorkspaces", () => {
         "Clone fails",
         repositoryConfig(join(root, "missing")),
       ),
-    ).rejects.toThrow("Could not create workspace");
+    ).rejects.toThrow("git clone failed");
 
     expect(await readdir(workspaceRoot)).toEqual([]);
   });

@@ -1,5 +1,6 @@
 import type {
   AnalyzeHarnessTaskInput,
+  ContinueHarnessTaskInput,
   ReviewHarnessTaskInput,
   ReviseHarnessTaskInput,
   StartHarnessTaskInput,
@@ -28,12 +29,13 @@ Read repository instructions such as AGENTS.md. Reproduce before editing when po
 
 export function revisionTaskPrompt(input: ReviseHarnessTaskInput): string {
   return `Address every blocking and important finding from the independent review. Reject a finding only with concrete repository or test evidence in the result summary. If feedback invalidates the root cause, stop and request re-investigation. Do not make unrelated changes.
-${JSON.stringify({
-  ticket: input.ticketSummary,
-  diffSummary: input.diffSummary.slice(0, 4_000),
-  review: input.review,
-})}
+${JSON.stringify(input.review)}
 Run the defect reproduction and relevant checks again. Return only the requested structured result.`;
+}
+
+export function ciRepairTaskPrompt(input: ContinueHarnessTaskInput): string {
+  return `Address only the supplied CI evidence in this existing bug-fix workspace. Inspect the repository locally and rerun relevant checks. Do not make unrelated changes. Never access GitLab, Jenkins, SonarQube, or any other external engineering system. Do not commit or push. Return only the requested structured result.
+${JSON.stringify(input.failure)}`;
 }
 
 export function reviewTaskPrompt(input: ReviewHarnessTaskInput): string {

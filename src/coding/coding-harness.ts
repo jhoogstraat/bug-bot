@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { TicketAnalysis } from "../domain/ticket-analysis.js";
 import type { NormalizedBugTicket } from "../domain/ticket.js";
+import type { CiFailureReport } from "../domain/ci.js";
 
 export const harnessRunOutputSchema = z.object({
   status: z.enum(["completed", "failed"]),
@@ -43,11 +44,6 @@ export interface AnalyzeHarnessTaskInput {
 
 export interface ReviseHarnessTaskInput {
   workspacePath: string;
-  ticketSummary: Pick<
-    NormalizedBugTicket,
-    "key" | "summary" | "expectedBehavior" | "actualBehavior"
-  >;
-  diffSummary: string;
   review: HarnessReviewResult;
 }
 
@@ -58,9 +54,15 @@ export interface ReviewHarnessTaskInput {
   diff: string;
 }
 
+export interface ContinueHarnessTaskInput {
+  workspacePath: string;
+  failure: CiFailureReport;
+}
+
 export interface CodingHarness {
   analyzeTask(input: AnalyzeHarnessTaskInput): Promise<TicketAnalysis>;
   startTask(input: StartHarnessTaskInput): Promise<HarnessRunResult>;
   reviseTask(sessionId: string, input: ReviseHarnessTaskInput): Promise<HarnessRunResult>;
+  continueTask(sessionId: string, input: ContinueHarnessTaskInput): Promise<HarnessRunResult>;
   review(input: ReviewHarnessTaskInput): Promise<HarnessReviewResult>;
 }
