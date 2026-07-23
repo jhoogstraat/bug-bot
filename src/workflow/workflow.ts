@@ -1,11 +1,8 @@
 import * as restate from "@restatedev/restate-sdk";
 import { z } from "zod";
-import type { CodingHarness, HarnessRunResult } from "../coding/coding-harness.js";
+import type { CodingHarness } from "../coding/coding-harness.js";
 import { ForgeName, type ForgeClient } from "../integrations/forge/forge.js";
-import type {
-  LocalGitWorkspaces,
-  RepositoryWorkspace,
-} from "../integrations/git/local-git-workspaces.js";
+import type { LocalGitWorkspaces } from "../integrations/git/local-git-workspaces.js";
 import type { CiFeedbackReader } from "../domain/ci.js";
 import type { JiraClient } from "../integrations/jira/jira-client.js";
 import { normalizeJiraIssue } from "../integrations/jira/jira-normalizer.js";
@@ -61,6 +58,7 @@ export function createBugFixWorkflow(dependencies: BugFixWorkflowDependencies) {
 
           const ticket = normalizeJiraIssue(ticketDto);
           const workflowId = ctx.key;
+
           const workspace = await ctx.run(
             "create-workspace",
             () => dependencies.workspaces.create(workflowId, ticket.key, ticket.summary, input.url),
@@ -113,9 +111,7 @@ export function createBugFixWorkflow(dependencies: BugFixWorkflowDependencies) {
           await ctx.run(
             "activate-focused-branch",
             () => dependencies.workspaces.activateBranch(workspace),
-            {
-              maxRetryAttempts: 2,
-            },
+            { maxRetryAttempts: 2 },
           );
 
           let harnessResult = await ctx.run(
@@ -130,24 +126,46 @@ export function createBugFixWorkflow(dependencies: BugFixWorkflowDependencies) {
           );
 
           let sessionId = harnessResult.sessionId;
-          await commitCompletedPatch(
-            ctx,
+          await ctx.run(
             "validate-and-commit",
-            dependencies,
-            workspace,
-            harnessResult,
-            `fix(${ticket.key}): ${ticket.summary}`,
+            async () => {
+              if (harnessResult.status !== "completed")
+                throw new restate.TerminalError(harnessResult.summary);
+
+              if (harnessResult.validation.failures.length > 0)
+                throw new restate.TerminalError(harnessResult.validation.failures.join("; "));
+
+              const changedFiles = await dependencies.workspaces.inspectPendingChanges(workspace);
+              if (changedFiles.length === 0)
+                throw new restate.TerminalError("Harness completed without changing files");
+
+              if (changedFiles.length > dependencies.limits.maxChangedFiles)
+                throw new restate.TerminalError(
+                  `Patch changed ${changedFiles.length} files; limit is ${dependencies.limits.maxChangedFiles}`,
+                );
+
+              await dependencies.workspaces.commitChanges(
+                workspace,
+                `fix(${ticket.key}): ${ticket.summary}`,
+              );
+            },
+            { maxRetryAttempts: 1 },
           );
 
           let revisionsUsed = 0;
           for (;;) {
-            const review = await reviewPatch(
-              ctx,
+            const review = await ctx.run(
               `independent-review-${revisionsUsed}`,
-              dependencies,
-              workspace,
-              ticket,
-              analysis,
+              async () => {
+                const diff = await dependencies.workspaces.inspectChangesSinceBase(workspace);
+                return await dependencies.codingHarness.review({
+                  ticket,
+                  analysis,
+                  workspacePath: workspace.path,
+                  diff,
+                });
+              },
+              { maxRetryAttempts: 2 },
             );
 
             if (review.verdict === "accept") {
@@ -178,13 +196,30 @@ export function createBugFixWorkflow(dependencies: BugFixWorkflowDependencies) {
             );
 
             sessionId = harnessResult.sessionId;
-            await commitCompletedPatch(
-              ctx,
+            await ctx.run(
               `commit-review-repair-${revisionsUsed}`,
-              dependencies,
-              workspace,
-              harnessResult,
-              `fix(${ticket.key}): repair review findings`,
+              async () => {
+                if (harnessResult.status !== "completed")
+                  throw new restate.TerminalError(harnessResult.summary);
+
+                if (harnessResult.validation.failures.length > 0)
+                  throw new restate.TerminalError(harnessResult.validation.failures.join("; "));
+
+                const changedFiles = await dependencies.workspaces.inspectPendingChanges(workspace);
+                if (changedFiles.length === 0)
+                  throw new restate.TerminalError("Harness completed without changing files");
+
+                if (changedFiles.length > dependencies.limits.maxChangedFiles)
+                  throw new restate.TerminalError(
+                    `Patch changed ${changedFiles.length} files; limit is ${dependencies.limits.maxChangedFiles}`,
+                  );
+
+                await dependencies.workspaces.commitChanges(
+                  workspace,
+                  `fix(${ticket.key}): repair review findings`,
+                );
+              },
+              { maxRetryAttempts: 1 },
             );
 
             revisionsUsed += 1;
@@ -264,22 +299,44 @@ export function createBugFixWorkflow(dependencies: BugFixWorkflowDependencies) {
             );
 
             sessionId = harnessResult.sessionId;
-            await commitCompletedPatch(
-              ctx,
+            await ctx.run(
               `commit-ci-repair-${repairAttempt}`,
-              dependencies,
-              workspace,
-              harnessResult,
-              `fix(${ticket.key}): repair CI failure`,
+              async () => {
+                if (harnessResult.status !== "completed")
+                  throw new restate.TerminalError(harnessResult.summary);
+
+                if (harnessResult.validation.failures.length > 0)
+                  throw new restate.TerminalError(harnessResult.validation.failures.join("; "));
+
+                const changedFiles = await dependencies.workspaces.inspectPendingChanges(workspace);
+                if (changedFiles.length === 0)
+                  throw new restate.TerminalError("Harness completed without changing files");
+
+                if (changedFiles.length > dependencies.limits.maxChangedFiles)
+                  throw new restate.TerminalError(
+                    `Patch changed ${changedFiles.length} files; limit is ${dependencies.limits.maxChangedFiles}`,
+                  );
+
+                await dependencies.workspaces.commitChanges(
+                  workspace,
+                  `fix(${ticket.key}): repair CI failure`,
+                );
+              },
+              { maxRetryAttempts: 1 },
             );
 
-            const repairReview = await reviewPatch(
-              ctx,
+            const repairReview = await ctx.run(
               `independent-ci-review-${repairAttempt}`,
-              dependencies,
-              workspace,
-              ticket,
-              analysis,
+              async () => {
+                const diff = await dependencies.workspaces.inspectChangesSinceBase(workspace);
+                return await dependencies.codingHarness.review({
+                  ticket,
+                  analysis,
+                  workspacePath: workspace.path,
+                  diff,
+                });
+              },
+              { maxRetryAttempts: 2 },
             );
 
             if (repairReview.verdict !== "accept")
@@ -309,57 +366,4 @@ export function createBugFixWorkflow(dependencies: BugFixWorkflowDependencies) {
       ),
     },
   });
-}
-
-async function commitCompletedPatch(
-  ctx: restate.WorkflowContext,
-  label: string,
-  dependencies: BugFixWorkflowDependencies,
-  workspace: RepositoryWorkspace,
-  result: HarnessRunResult,
-  message: string,
-): Promise<void> {
-  await ctx.run(
-    label,
-    async () => {
-      if (result.status !== "completed") throw new restate.TerminalError(result.summary);
-      if (result.validation.failures.length > 0)
-        throw new restate.TerminalError(result.validation.failures.join("; "));
-
-      const changedFiles = await dependencies.workspaces.inspectPendingChanges(workspace);
-      if (changedFiles.length === 0)
-        throw new restate.TerminalError("Harness completed without changing files");
-
-      if (changedFiles.length > dependencies.limits.maxChangedFiles)
-        throw new restate.TerminalError(
-          `Patch changed ${changedFiles.length} files; limit is ${dependencies.limits.maxChangedFiles}`,
-        );
-
-      await dependencies.workspaces.commitChanges(workspace, message);
-    },
-    { maxRetryAttempts: 1 },
-  );
-}
-
-async function reviewPatch(
-  ctx: restate.WorkflowContext,
-  label: string,
-  dependencies: BugFixWorkflowDependencies,
-  workspace: RepositoryWorkspace,
-  ticket: Parameters<CodingHarness["startTask"]>[0]["ticket"],
-  analysis: Parameters<CodingHarness["startTask"]>[0]["approvedAnalysis"],
-) {
-  return await ctx.run(
-    label,
-    async () => {
-      const diff = await dependencies.workspaces.inspectChangesSinceBase(workspace);
-      return await dependencies.codingHarness.review({
-        ticket,
-        analysis,
-        workspacePath: workspace.path,
-        diff,
-      });
-    },
-    { maxRetryAttempts: 2 },
-  );
 }
