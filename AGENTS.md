@@ -4,11 +4,17 @@
 
 Bug Bot is a Bun/TypeScript service that turns a Jira bug into a reviewed draft pull/merge request. Restate provides durable execution and retries; deterministic TypeScript owns validation, policy, and side effects; Codex or a fake harness performs bounded investigation and implementation. The workflow always leaves the final merge to a human.
 
-## Default Mindset: Prove It, Then Polish It
+## Engineering practices
+We're a startup. You're probably used to writing enterprise code - code that tries to handle every possible edge case and has fallbacks for everything. 
+That's not how we do things around here: our number one rule is to keep things simple. We handle ONLY the most important cases.
 
-Prefer small, direct, disposable code that quickly demonstrates whether an idea works. Do not begin by designing for every hypothetical failure mode, adding broad abstractions, or hardening code that has not yet proved useful.
+We try to only add new functionality that is small (that is, simple and few lines of code or absolutely necessary. If a change is not small or absolutely necessary, don't make it.
 
-It is acceptable to write deliberate "slop code" as an investigative tool when it is clearly scoped and easy to remove. Use a narrow adapter, fake, fixture, replay script, black-box harness, or one-off probe to exercise behavior from the outside. Never use slop code to bypass permissions, security controls, user approval, or repository safety rules. Remove temporary probes, debug output, and brittle shortcuts before presenting production code.
+Humans are the architects that decide the the software design. Same goes for contracts.
+
+### Typing external payloads:
+• Define payload types from external systems in plain TypeScript `*.types.ts`ts files.
+• Parse unknown external data with Zod at the boundary where it enters the app. Parsing should either return typed data or throw.
 
 ## Mandatory Skill
 
@@ -38,24 +44,6 @@ Keep transport and integration adapters thin. Product policy and sequencing belo
 - `test/`: flat Bun test suite, including the opt-in Restate replay integration test.
 - `docs/`: architecture and local-development guidance.
 
-## Development Commands
-
-Use the scripts in `package.json` rather than invoking tools through npm or Node:
-
-```bash
-bun install                  # install from bun.lock
-bun run dev                  # watch src/app/server.ts
-bun run build                # strict TypeScript compile to dist/
-bun run start                # run built dist/src/app/server.js
-bun run test                 # default Bun tests
-bun run test:watch           # watch default tests
-bun run lint                 # typed ESLint
-bun run format               # write Prettier formatting
-bun run check                # format check + lint + build + default tests
-```
-
-For local Restate, run `docker compose up -d restate`, then register the endpoint as documented in `docs/local-development.md`. Run replay coverage with `bun run test:restate`, which uses Apple Container.
-
 ## Code Conventions & Common Patterns
 
 - Use strict TypeScript and ESM. Preserve `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitOverride`, and unknown catch variables.
@@ -68,23 +56,8 @@ For local Restate, run `docker compose up -d restate`, then register the endpoin
 - Keep coding agents isolated from credentials and external systems. The workflow—not the harness—owns Jira transitions, Git commits/pushes, MR creation, and CI retrieval.
 - Make irreversible operations idempotent and preserve configured repository allow-lists, path containment, changed-file limits, repair budgets, and independent-review gates.
 
-## Important Files
-
-- `src/app/server.ts`: executable Restate endpoint.
-- `src/app/environment.ts`: runtime configuration schema and defaults.
-- `src/workflow/workflow.ts`: primary state machine and human-escalation boundaries.
-- `src/workflow/dependencies.ts`: production/fake dependency wiring.
-- `src/coding/coding-harness.ts`: harness contract and boundary schemas.
-- `src/integrations/git/local-git-workspaces.ts`: workspace isolation and Git lifecycle.
-- `src/integrations/forge/forge.ts`: normalized GitHub/GitLab port.
-- `package.json`: authoritative command and dependency surface.
-- `tsconfig.json`, `eslint.config.js`, `.prettierrc.json`, `.editorconfig`: compiler and style rules.
-- `.env.example`: local modes and operational limits. It does not currently list the real Jira variables accepted by `src/app/environment.ts`; consult the schema before configuring real Jira.
-- `docs/architecture.md`, `docs/local-development.md`: deeper flow and setup details.
-
 ## Runtime/Tooling Preferences
 
-- Use Bun 1.3.x; `package.json` pins `bun@1.3.14`, `mise.toml` pins Bun 1.3, and `bun.lock` is the only lockfile.
 - Do not substitute npm, pnpm, Yarn, Jest, Vitest, or Node-based script execution.
 - The project emits ES2023 NodeNext modules and source maps under `dist/`.
 - Local replay testing requires Docker or Apple Container. Real forge access requires authenticated `gh` and/or `glab`; Codex mode requires Codex authentication.
